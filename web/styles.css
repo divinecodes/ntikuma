@@ -1,0 +1,1744 @@
+/* Ntikuma landing page.
+   A light, GNOME-docs page; every product shot sits on a dark "desktop" stage.
+   The popup mockups use the app's own dark libadwaita tokens (--w-*). */
+
+@font-face {
+    font-family: "Ubuntu Sans";
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url("assets/fonts/UbuntuSans-latin.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Ubuntu Sans Mono";
+    font-style: normal;
+    font-weight: 400 600;
+    font-display: swap;
+    src: url("assets/fonts/UbuntuSansMono-latin.woff2") format("woff2");
+}
+
+:root {
+    --page: #f4f5f7;
+    --paper: #ffffff;
+    --ink: #1b1c21;
+    --dim: #5a5b64;
+    --faint: #6a6b74;
+    --rule: #dfe1e6;
+    --key-edge: #c9ccd3;
+    --kbd-bg: #e7e8ec;
+    --kbd-edge: #d3d5db;
+    --accent: #1c71d8;
+    --accent-hover: #1a62bc;
+    --accent-ink: #0461be;
+    --focus: #78aeed;
+    --glass: rgb(244 245 247 / 0.86);
+
+    --stage: #17191f;
+    --stage-line: #34363d;
+    --stage-rule: #2c2e35;
+    --stage-dim: #b4b5bd;
+    --code-bg: #1d1e23;
+    --code-fg: #e9eaee;
+    --code-prompt: #7f828c;
+
+    --w-win: #242428;
+    --w-card: #2a2a2e;
+    --w-field: #1c1c1f;
+    --w-foot: #1f1f22;
+    --w-hover: #36363b;
+    --w-fg: #f4f4f6;
+    --w-dim: #a8a8b0;
+    --w-line: #3a3a40;
+    --w-line-strong: #55555c;
+    --w-sel: #1f3550;
+    --w-sel-line: #2c4a70;
+    --w-sel-text: #a9cdf5;
+    --w-accent-text: #78aeed;
+    --w-rec: #c01c28;
+    --w-level: #e01b24;
+    --w-level-quiet: #5a2328;
+    --w-warn: #f5d48a;
+    --w-ok: #8fd6a8;
+
+    --display: "Ubuntu Sans", "Cantarell", system-ui, sans-serif;
+    --mono: "Ubuntu Sans Mono", "JetBrains Mono", ui-monospace, monospace;
+
+    color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+html {
+    scroll-behavior: smooth;
+    /* Clears the sticky header when jumping to a section. */
+    scroll-padding-top: 88px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+}
+
+body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--display);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+    margin: 0;
+}
+
+h1,
+h2,
+h3 {
+    text-wrap: balance;
+}
+
+a {
+    color: var(--accent-ink);
+}
+
+a:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+img,
+svg {
+    max-width: 100%;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.skip {
+    position: absolute;
+    left: 16px;
+    top: -60px;
+    z-index: 40;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--ink);
+    color: var(--paper);
+}
+
+.skip:focus {
+    top: 12px;
+}
+
+.wrap {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-left: max(24px, env(safe-area-inset-left, 0px));
+    padding-right: max(24px, env(safe-area-inset-right, 0px));
+}
+
+.mono {
+    font-family: var(--mono);
+}
+
+/* Sections */
+
+.section {
+    padding-block: 112px;
+}
+
+.band {
+    background: var(--paper);
+    border-block: 1px solid var(--rule);
+}
+
+.band-dark {
+    background: var(--stage);
+    color: var(--w-fg);
+}
+
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+}
+
+.intro {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-width: 760px;
+}
+
+.copy {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.eyebrow {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+.h2 {
+    font-size: 48px;
+    line-height: 1.08;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+}
+
+.lede {
+    font-size: 18px;
+    line-height: 1.6;
+    color: var(--dim);
+    max-width: 34em;
+}
+
+.band-dark .eyebrow {
+    color: var(--w-dim);
+}
+
+.band-dark .lede {
+    color: var(--stage-dim);
+}
+
+.split {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 56px;
+    align-items: center;
+}
+
+.col5 {
+    grid-column: span 5;
+    min-width: 0;
+}
+
+.col7 {
+    grid-column: span 7;
+    min-width: 0;
+}
+
+.cols2,
+.cols3 {
+    display: grid;
+    gap: 20px;
+}
+
+.cols2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cols3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Keys */
+
+.key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--key-edge);
+    border-bottom-width: 5px;
+    border-radius: 14px;
+    box-shadow: 0 1px 0 #fff inset, 0 2px 6px rgb(20 24 40 / 0.08);
+    line-height: 1;
+}
+
+.kbd {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 0.8em;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 5px;
+    background: var(--kbd-bg);
+    color: var(--ink);
+    border: 1px solid var(--kbd-edge);
+    border-bottom-width: 2px;
+    white-space: nowrap;
+}
+
+.kbd-lg {
+    font-size: 14px;
+    padding: 6px 9px;
+}
+
+/* Buttons */
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 0 22px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 16px;
+    text-decoration: none;
+}
+
+.btn svg {
+    width: 18px;
+    height: 18px;
+    flex: none;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.btn-ghost {
+    background: var(--paper);
+    color: var(--ink);
+    border: 1px solid var(--rule);
+}
+
+.btn-ghost:hover {
+    background: #eceef2;
+}
+
+.btn-sm {
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 15px;
+}
+
+/* Header */
+
+.header {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    padding-top: env(safe-area-inset-top, 0px);
+    background: var(--glass);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    backdrop-filter: saturate(1.4) blur(14px);
+    border-bottom: 1px solid var(--rule);
+}
+
+/* A soft shadow fades in over the first 120px of scrolling. */
+@supports (animation-timeline: scroll()) {
+    .header {
+        animation: header-lift linear both;
+        animation-timeline: scroll();
+        animation-range: 0 120px;
+    }
+}
+
+@keyframes header-lift {
+    to {
+        box-shadow: 0 10px 28px -18px rgb(20 24 40 / 0.4);
+    }
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.menu-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+}
+
+.menu-toggle svg {
+    width: 20px;
+    height: 20px;
+}
+
+.menu-toggle .menu-close,
+.header.open .menu-toggle .menu-open {
+    display: none;
+}
+
+.header.open .menu-toggle .menu-close {
+    display: block;
+}
+
+.menu-toggle:focus-visible,
+.btn:focus-visible,
+.play:focus-visible,
+.replay:focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+}
+
+.header .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    height: 72px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+.nav {
+    display: flex;
+    gap: 32px;
+}
+
+.nav a {
+    color: var(--dim);
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.nav a:hover {
+    color: var(--ink);
+}
+
+/* Hero */
+
+.hero {
+    padding-block: 88px 104px;
+}
+
+.hero-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.hero-keys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    font-weight: 800;
+}
+
+/* The keycap headline needs more room than the other 5/7 splits give it. */
+.hero .col5 {
+    grid-column: span 6;
+}
+
+.hero .col7 {
+    grid-column: span 6;
+}
+
+.hero-keys .key {
+    font-size: 50px;
+    height: 86px;
+    padding: 0 24px;
+}
+
+.hero-keys .key-space {
+    padding: 0 40px;
+}
+
+.hero-keys .plus {
+    font-size: 44px;
+    font-weight: 500;
+    color: #9a9ca5;
+}
+
+.tagline {
+    font-size: 40px;
+    line-height: 1.12;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+}
+
+.tagline .key {
+    font-size: 28px;
+    height: 46px;
+    padding: 0 12px;
+    border-radius: 9px;
+    border-bottom-width: 4px;
+    vertical-align: 4px;
+}
+
+.meta {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--faint);
+}
+
+/* Steps */
+
+.steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 40px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 24px;
+}
+
+/* The rule above each step; it draws across on scroll (see Motion). */
+.step::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: var(--ink);
+    transform-origin: left;
+}
+
+.step-keys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: #9a9ca5;
+    font-size: 14px;
+}
+
+.step h3 {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.step p {
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--dim);
+}
+
+/* Checklist */
+
+.ticks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.ticks li {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 12px;
+    font-size: 17px;
+    line-height: 1.55;
+    color: var(--dim);
+}
+
+.ticks b {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.ticks svg {
+    width: 20px;
+    height: 20px;
+    margin-top: 3px;
+    color: var(--accent);
+}
+
+/* Label/value rows */
+
+.rows {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.rows-ruled {
+    border-top: 1px solid var(--rule);
+}
+
+.krow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 15.5px;
+}
+
+.krow .label {
+    color: var(--dim);
+}
+
+.krow .name {
+    font-weight: 600;
+}
+
+.krow .note {
+    font-size: 14px;
+    color: var(--dim);
+    text-align: right;
+}
+
+.kgrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0 40px;
+    margin: 0;
+}
+
+.kgrid dt {
+    color: var(--dim);
+}
+
+.kgrid dd {
+    margin: 0;
+}
+
+/* Feature cards */
+
+.feature {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 16px;
+    padding: 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.feature svg {
+    width: 26px;
+    height: 26px;
+    color: var(--accent);
+}
+
+.feature h3 {
+    font-size: 19px;
+    font-weight: 700;
+}
+
+.feature p {
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--dim);
+}
+
+/* Privacy */
+
+.ledger {
+    align-self: start;
+    border: 1px solid var(--stage-line);
+    border-radius: 16px;
+    padding: 28px;
+}
+
+.ledger .eyebrow {
+    padding-bottom: 12px;
+}
+
+.ledger .eyebrow.home {
+    color: var(--w-accent-text);
+}
+
+.ledger .eyebrow.away {
+    color: var(--w-warn);
+}
+
+.ledger .krow {
+    border-color: var(--stage-rule);
+}
+
+.ledger .krow:last-child {
+    border-color: transparent;
+}
+
+.ledger .where {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--w-dim);
+    white-space: nowrap;
+}
+
+/* Install */
+
+.install {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.install-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.install-head h3 {
+    font-size: 19px;
+    font-weight: 700;
+}
+
+.install-head span {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--dim);
+}
+
+.install p {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--dim);
+}
+
+.code {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1.7;
+    background: var(--code-bg);
+    color: var(--code-fg);
+    border-radius: 12px;
+    padding: 18px 20px;
+    overflow-x: auto;
+}
+
+.code .p {
+    color: var(--code-prompt);
+    user-select: none;
+}
+
+/* Footer */
+
+.footer {
+    border-top: 1px solid var(--rule);
+    padding-block: 40px 48px;
+}
+
+.footer .wrap {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+}
+
+.origin {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    max-width: 520px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--dim);
+}
+
+.origin svg {
+    flex: none;
+}
+
+.colophon {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--dim);
+    text-align: right;
+}
+
+/* Desktop stage and popup mockups */
+
+.stage {
+    position: relative;
+    margin: 0;
+    background: var(--stage);
+    border-radius: 22px;
+    overflow: hidden;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 28px;
+    padding: 0 14px;
+    background: #0b0c0f;
+    color: #e8e8ec;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.topbar .dots {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    width: 60px;
+}
+
+.topbar .dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: #777;
+}
+
+.topbar .dots span:first-child {
+    width: 18px;
+    background: #fff;
+}
+
+.stage-pad {
+    display: flex;
+    justify-content: center;
+    padding: 56px 48px;
+}
+
+.stage-pad.tall {
+    padding-block: 64px 72px;
+}
+
+.stage-pad.voice {
+    padding-block: 72px;
+}
+
+.popup {
+    position: relative;
+    width: 100%;
+    max-width: 600px;
+    background: var(--w-win);
+    color: var(--w-fg);
+    border: 1px solid var(--w-line);
+    border-radius: 14px;
+    box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(0 0 0 / 0.4);
+    font-size: 14px;
+    overflow: hidden;
+}
+
+.p-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.p-ask {
+    padding: 12px 12px 12px 16px;
+}
+
+.p-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.caret {
+    display: inline-block;
+    width: 2px;
+    height: 18px;
+    margin-left: 1px;
+    vertical-align: -3px;
+    background: var(--w-accent-text);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .caret {
+        /* Four blinks (4.4s), then it stays lit: moving content stops within 5s. */
+        animation: blink 1.1s steps(1) 4;
+    }
+}
+
+@keyframes blink {
+    50% {
+        opacity: 0;
+    }
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 8px;
+    background: var(--w-hover);
+    color: var(--w-fg);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.pill.on {
+    background: var(--w-sel);
+    color: var(--w-sel-text);
+}
+
+.pill.small {
+    height: 24px;
+    font-size: 12px;
+}
+
+.p-context {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--w-line);
+    font-size: 13px;
+}
+
+.p-context b {
+    color: var(--w-dim);
+    font-weight: 600;
+}
+
+.p-context .none {
+    color: var(--w-dim);
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid var(--w-line);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.chip.sel {
+    background: var(--w-sel);
+    border-color: var(--w-sel-line);
+    color: var(--w-sel-text);
+}
+
+.p-recent {
+    padding: 8px 8px 10px;
+    border-top: 1px solid var(--w-line);
+}
+
+.p-recent .heading {
+    padding: 6px 8px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--w-dim);
+}
+
+.p-chat {
+    padding: 9px 10px;
+    border-radius: 8px;
+}
+
+.p-chat.active {
+    background: var(--w-hover);
+}
+
+.p-chat .title {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.p-chat .when {
+    font-size: 12px;
+    color: var(--w-dim);
+}
+
+.p-foot {
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 9px 14px;
+    background: var(--w-foot);
+    border-top: 1px solid var(--w-line);
+    font-size: 12px;
+    color: var(--w-dim);
+}
+
+.p-foot > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.wkbd {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 5px;
+    border-radius: 4px;
+    background: var(--w-line);
+    color: var(--w-fg);
+    white-space: nowrap;
+}
+
+.p-title {
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--w-line);
+}
+
+.p-title b {
+    font-weight: 600;
+    min-width: 0;
+    text-align: center;
+}
+
+.p-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+}
+
+.bubble {
+    align-self: flex-end;
+    padding: 9px 14px;
+    border-radius: 14px;
+    background: var(--w-hover);
+}
+
+.activity {
+    font-size: 12px;
+    color: var(--w-dim);
+}
+
+.activity .mono {
+    color: var(--w-fg);
+}
+
+.approve {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--w-line-strong);
+    border-radius: 12px;
+    background: var(--w-card);
+}
+
+.approve b {
+    font-size: 15px;
+}
+
+.approve .cmd {
+    font-family: var(--mono);
+    font-size: 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--w-field);
+}
+
+.approve p {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--w-dim);
+}
+
+.approve-actions {
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--w-dim);
+}
+
+.p-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.p-btn.plain {
+    font-weight: 400;
+    padding: 0 10px;
+}
+
+.p-btn.grey {
+    background: var(--w-hover);
+}
+
+.p-btn.blue {
+    background: var(--accent);
+    color: #fff;
+}
+
+.p-btn.blue .wkbd {
+    background: rgb(255 255 255 / 0.2);
+}
+
+.approve .p-btn {
+    font-size: 14px;
+    padding: 0 14px;
+}
+
+.p-voice-head {
+    justify-content: space-between;
+    padding: 14px 16px;
+}
+
+.p-voice-head .timer {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--w-dim);
+}
+
+.p-voice {
+    gap: 18px;
+    padding: 8px 16px 20px;
+}
+
+.rec {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--w-rec);
+    box-shadow: 0 0 0 6px rgb(192 28 40 / 0.25);
+}
+
+.levels {
+    flex: 1;
+    min-width: 0;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    overflow: hidden;
+}
+
+.levels span {
+    flex: 1 0 3px;
+    max-width: 4px;
+    height: var(--h);
+    border-radius: 2px;
+    background: var(--w-level);
+}
+
+.levels span.quiet {
+    background: var(--w-level-quiet);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    /* Paused by default; main.js sets .live for under 5s each time the
+       waveform scrolls into view, so it never moves indefinitely. */
+    .levels span:not(.quiet) {
+        animation: level 1.2s ease-in-out infinite alternate paused;
+        animation-delay: calc(var(--i) * -90ms);
+        transform-origin: center;
+    }
+
+    .levels.live span:not(.quiet) {
+        animation-play-state: running;
+    }
+}
+
+@keyframes level {
+    from {
+        transform: scaleY(1);
+    }
+    to {
+        transform: scaleY(0.45);
+    }
+}
+
+.p-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--w-line);
+}
+
+/* Approval demo (driven by main.js) */
+
+.cursor {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 2;
+    width: 22px;
+    height: 22px;
+    opacity: 0;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.5));
+    transition: transform 0.9s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.2s;
+}
+
+.cursor.show {
+    opacity: 1;
+}
+
+.p-btn {
+    transition: transform 0.12s, background-color 0.12s;
+}
+
+.p-btn.blue.pressed {
+    transform: scale(0.94);
+    background: var(--accent-hover);
+}
+
+.ran {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ran svg {
+    width: 14px;
+    height: 14px;
+    color: var(--w-ok);
+}
+
+.answer {
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.answer code {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--w-field);
+}
+
+.answer .w {
+    opacity: 0;
+    transition: opacity 0.25s;
+}
+
+.answer .w.on {
+    opacity: 1;
+}
+
+.replay {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--w-line);
+    border-radius: 999px;
+    background: var(--w-win);
+    color: var(--w-fg);
+    font: 600 14px var(--display);
+    cursor: pointer;
+}
+
+.replay:hover {
+    background: var(--w-hover);
+}
+
+.replay[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Demo video */
+
+.video {
+    position: relative;
+    margin: 0;
+    aspect-ratio: 16 / 9;
+    max-width: 100%;
+    overflow: hidden;
+    border: 1px solid var(--stage-line);
+    border-radius: 18px;
+    background: #000;
+    box-shadow: 0 40px 80px -40px rgb(0 0 0 / 0.8);
+}
+
+.video video {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Without the script the lazy player never gets a source; the <noscript> copy plays instead. */
+html:not(.js) .video video.lazy {
+    display: none;
+}
+
+.play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    border: 0;
+    background: rgb(10 12 16 / 0.45);
+    color: #fff;
+    font: 600 18px var(--display);
+    cursor: pointer;
+}
+
+.play .disc {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    padding-left: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 10px rgb(28 113 216 / 0.25);
+    transition: transform 0.2s;
+}
+
+.play:hover .disc {
+    transform: scale(1.06);
+}
+
+/* Motion. Everything here is off under reduced motion, and the scroll-driven
+   part only runs where the browser supports view timelines; elsewhere the page
+   simply renders at rest. */
+
+@media (prefers-reduced-motion: no-preference) {
+    .hero-keys .key {
+        animation: key-drop 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s backwards;
+    }
+
+    .hero-keys .plus {
+        animation: fade 0.3s ease-out 0.4s backwards;
+    }
+
+    .hero-keys .key-space {
+        animation-delay: 0.45s;
+    }
+
+    .hero .stage {
+        animation: fade 0.5s ease-out 0.5s backwards;
+    }
+
+    .hero .popup {
+        transform-origin: 50% 0;
+        animation: pop 0.7s cubic-bezier(0.2, 0.9, 0.25, 1.15) 0.8s backwards;
+    }
+
+    @supports (animation-timeline: view()) {
+        .section .intro,
+        .section .copy,
+        .section .stage,
+        .video,
+        .step,
+        .feature,
+        .ledger,
+        .install,
+        .kgrid > .krow {
+            animation: rise linear both;
+            animation-timeline: view();
+            /* Finish once fully on screen, so the last sections settle too. */
+            animation-range: entry 0% entry 70%;
+        }
+
+        .section .stage .popup {
+            animation: settle linear both;
+            animation-timeline: view();
+            animation-range: entry 10% entry 90%;
+        }
+
+        .step::before {
+            animation: draw linear both;
+            animation-timeline: view();
+            animation-range: entry 20% entry 100%;
+        }
+
+        .step:nth-child(2),
+        .feature:nth-child(3n + 2) {
+            animation-range: entry 10% entry 80%;
+        }
+
+        .step:nth-child(3),
+        .feature:nth-child(3n) {
+            animation-range: entry 20% entry 90%;
+        }
+    }
+}
+
+@keyframes key-drop {
+    0% {
+        opacity: 0;
+        transform: translateY(-32px);
+    }
+    55% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    72% {
+        transform: translateY(4px);
+        box-shadow: 0 0 0 #fff inset, 0 1px 2px rgb(20 24 40 / 0.08);
+    }
+    100% {
+        transform: none;
+    }
+}
+
+@keyframes fade {
+    from {
+        opacity: 0;
+    }
+}
+
+@keyframes pop {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.95);
+    }
+}
+
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(32px);
+    }
+}
+
+@keyframes settle {
+    from {
+        transform: translateY(24px) scale(0.97);
+    }
+}
+
+@keyframes draw {
+    from {
+        transform: scaleX(0);
+    }
+}
+
+/* Narrow screens */
+
+@media (max-width: 960px) {
+    .split {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 40px;
+    }
+
+    .col5,
+    .col7,
+    .hero .col5,
+    .hero .col7 {
+        grid-column: auto;
+    }
+
+    /* Keep the copy first when a stage leads the row on wide screens. */
+    .split .copy-first {
+        order: -1;
+    }
+
+    /* With the script, the links fold into a menu under the header. */
+    .js .menu-toggle {
+        display: inline-flex;
+    }
+
+    .js .nav {
+        display: none;
+    }
+
+    .js .header.open .nav {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        padding: 4px max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
+        background: var(--page);
+        border-bottom: 1px solid var(--rule);
+        box-shadow: 0 18px 30px -20px rgb(20 24 40 / 0.35);
+    }
+
+    .js .header.open .nav a {
+        display: flex;
+        align-items: center;
+        min-height: 52px;
+        border-bottom: 1px solid var(--rule);
+        font-size: 17px;
+        color: var(--ink);
+    }
+
+    .js .header.open .nav a:last-child {
+        border-bottom: 0;
+    }
+
+    /* Without it, the links scroll sideways on a second row. */
+    html:not(.js) .header .wrap {
+        flex-wrap: wrap;
+        height: auto;
+        padding-block: 12px;
+        row-gap: 8px;
+    }
+
+    html:not(.js) .nav {
+        order: 3;
+        width: 100%;
+        gap: 24px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+
+    html:not(.js) .nav a {
+        white-space: nowrap;
+    }
+
+    .hero {
+        padding-block: 56px 72px;
+    }
+
+    .hero-keys .key {
+        font-size: 44px;
+        height: 76px;
+        padding: 0 20px;
+    }
+
+    .hero-keys .key-space {
+        padding: 0 32px;
+    }
+
+    .section {
+        padding-block: 80px;
+    }
+
+    .h2 {
+        font-size: 38px;
+    }
+
+    .cols3,
+    .kgrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cols2,
+    .steps {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .wrap {
+        padding-left: max(16px, env(safe-area-inset-left, 0px));
+        padding-right: max(16px, env(safe-area-inset-right, 0px));
+    }
+
+    .hero-keys {
+        gap: 10px;
+    }
+
+    .hero-keys .key {
+        font-size: 32px;
+        height: 60px;
+        padding: 0 14px;
+        border-radius: 11px;
+    }
+
+    .hero-keys .key-space {
+        padding: 0 24px;
+    }
+
+    .hero-keys .plus {
+        font-size: 32px;
+    }
+
+    .tagline {
+        font-size: 32px;
+    }
+
+    .tagline .key {
+        font-size: 22px;
+        height: 38px;
+    }
+
+    .h2 {
+        font-size: 32px;
+    }
+
+    .cols3,
+    .kgrid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .stage {
+        border-radius: 16px;
+    }
+
+    .stage-pad,
+    .stage-pad.tall,
+    .stage-pad.voice {
+        padding: 28px 12px;
+    }
+
+    .ledger {
+        padding: 22px;
+    }
+
+    .colophon {
+        text-align: left;
+    }
+
+    .hide-sm {
+        display: none;
+    }
+
+    .header .wrap {
+        height: 64px;
+    }
+
+    .replay {
+        right: 12px;
+        bottom: 12px;
+    }
+
+    .play {
+        font-size: 16px;
+        gap: 12px;
+    }
+
+    .play .disc {
+        width: 60px;
+        height: 60px;
+    }
+
+    .play .disc svg {
+        width: 24px;
+        height: 24px;
+    }
+
+    .video {
+        border-radius: 12px;
+    }
+}
+
+@media (max-width: 420px) {
+    /* Icon-only GitHub button; the label stays for screen readers. */
+    .gh-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .header .btn-sm {
+        width: 44px;
+        padding: 0;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 360px) {
+    .hero-keys .key {
+        font-size: 28px;
+        height: 54px;
+        padding: 0 12px;
+    }
+
+    .hero-keys .key-space {
+        padding: 0 20px;
+    }
+
+    .hero-keys .plus {
+        font-size: 26px;
+    }
+
+    .tagline {
+        font-size: 28px;
+    }
+
+    .h2 {
+        font-size: 29px;
+    }
+
+    .stage-pad,
+    .stage-pad.tall,
+    .stage-pad.voice {
+        padding: 20px 8px;
+    }
+}
