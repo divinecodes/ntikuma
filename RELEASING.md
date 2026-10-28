@@ -35,6 +35,8 @@ Tags use the GitHub Actions bot's noreply identity. The workflow creates no vers
 
 Published releases and completed drafts are not overwritten. Interrupted pending uploads can be retried; only incomplete managed draft assets may be replaced. An unmanaged version tag/release, changed completed asset, or missing metadata stops automation for manual review.
 
+GitHub can report a draft's tag as `untagged-*`. The controller identifies such drafts through their hidden release metadata, requires an exact match with the immutable version tag, and verifies uploaded assets as usual. Ready drafts are reused without writes; pending drafts resume on the same release ID. Duplicate or damaged managed metadata stops the run. When completing a pending draft, the controller explicitly retains its version tag and source commit.
+
 Runs are serialized with GitHub concurrency. GitHub can replace pending runs, so each run reads unreleased PR history rather than relying only on its triggering PR. It handles up to three versions, then dispatches another catch-up run if needed. This bounds build time without dropping older merges.
 
 ## GitHub App setup
@@ -85,5 +87,7 @@ API planning uses `GH_TOKEN` or `GITHUB_TOKEN` with repository contents write ac
 ## Review and publish
 
 Open the [GitHub releases page](https://github.com/divinecodes/ntikuma/releases), inspect the draft's source commit and PR, and confirm it has all three assets. Download them together and run `sha256sum -c SHA256SUMS`. Follow [installation and migration](INSTALLATION.md#debian-package) to check the candidate on your desktop.
+
+Confirm the selected tag matches the version in `release.json`. If GitHub shows an `untagged-*` placeholder, select the existing `vX.Y.Z` tag before publishing; keep its source commit unchanged.
 
 Edit the release notes, then publish the reviewed draft manually. The automation does not publish drafts, change repository visibility, install packages, migrate user data or download models. Repository visibility and private-reporting/secret-protection activation remain separate publication steps in the [security setup guide](.github/security-setup.md).

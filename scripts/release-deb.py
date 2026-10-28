@@ -221,7 +221,15 @@ def load_state(api, history):
     for release in api.all("releases"):
         name = release["tag_name"]
         if not re.fullmatch("v" + VERSION, name):
-            continue
+            body = release.get("body") or ""
+            managed = "ntikuma-release" in body or re.fullmatch("Ntikuma v" + VERSION, release.get("name") or "")
+            if not managed:
+                continue
+            if not release["draft"] or not name.startswith("untagged-"):
+                raise ReleaseError("managed release has an unexpected tag; review it manually")
+            # GitHub can expose a draft under an internal placeholder. Its
+            # marker must still match the immutable tag, checked by is_ready.
+            name = "v" + marker(body)["plan"]["version"]
         if name not in plans or name in releases:
             raise ReleaseError("unmanaged or duplicate versioned release; automatic releases stopped")
         releases[name] = release
@@ -409,7 +417,9 @@ def publish_one(api, history, plan, directory):
         raise ReleaseError("release changed during upload; no publication or overwrite attempted")
     value = {"plan": plan, "state": "ready", "digests": digests}
     body = MARKER.sub(lambda _: "<!-- ntikuma-release " + canonical(value) + " -->", current["body"])
-    api.request("PATCH", f"releases/{release['id']}", {"body": body})
+    api.request("PATCH", f"releases/{release['id']}", {
+        "body": body, "tag_name": tag_name, "target_commitish": plan["sha"],
+    })
     updated = api.request("GET", f"releases/{release['id']}")
     if not is_ready(api, updated, plan):
         raise ReleaseError("release assets were not fully verified")
