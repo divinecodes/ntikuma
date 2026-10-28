@@ -17,9 +17,11 @@ An explicit minor or major override on the first PR starts at `0.2.0` or `1.0.0`
 
 The [release workflow](.github/workflows/release.yml) runs after merged PRs, including fork PRs. It builds protected `master` history, never an unmerged PR head. Queue processing also finds earlier unreleased merged PRs, in master history order. PRs merged before the release workflow existed are included in the initial source snapshot rather than released individually.
 
+The controller pins REST API version `2022-11-28`. GitHub removed `merge_commit_sha` in `2026-03-10`; an API upgrade must first replace how the planner identifies merged commits. Missing merge SHAs stop planning instead of silently skipping releases. See [GitHub's breaking changes](https://docs.github.com/en/rest/about-the-rest-api/breaking-changes).
+
 ## Build and draft preparation
 
-Planning uses only GET requests, but its isolated job needs `contents: write` because GitHub lists draft releases only to callers with push access. It transfers a validated plan to the build job and executes no candidate code.
+Planning uses only GET requests, but its isolated job needs `contents: write` to include draft releases. Repository role flags such as `permissions.push` can be false for an Actions installation token even with this access; the controller relies on GitHub's API authorization rather than those flags. It transfers a validated plan to the build job and executes no candidate code.
 
 The build job has read-only repository permissions. It checks out each exact source commit in a separate worktree, bootstraps pinned tooling, builds the versioned package and runs frontend checks/tests, both Go race/vet/advisory suites, npm audits, and script/package tests. The package version and executable version must match.
 
@@ -60,7 +62,7 @@ python3 scripts/release-deb.py --repo divinecodes/ntikuma plan --output /tmp/nti
 python3 scripts/release-deb.py --repo divinecodes/ntikuma publish --artifacts /absolute/path/to/candidates
 ```
 
-API planning uses `GH_TOKEN` or `GITHUB_TOKEN` with push access so it can include existing drafts. Planning sends no write requests. `publish` changes GitHub only with `--apply`; normally let the workflow run it under its shared concurrency lock.
+API planning uses `GH_TOKEN` or `GITHUB_TOKEN` with repository contents write access so it can include existing drafts. Planning sends no write requests. `publish` changes GitHub only with `--apply`; normally let the workflow run it under its shared concurrency lock.
 
 ## Review and publish
 

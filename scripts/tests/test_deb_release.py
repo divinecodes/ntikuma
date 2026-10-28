@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -166,11 +167,28 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(RELEASE.bump_version("1.10.99", "patch"), "1.10.100")
         self.assertEqual(self.api.writes, [])
 
-    def test_planning_rejects_tokens_that_cannot_see_drafts(self):
+    def test_planning_accepts_actions_token_with_false_repository_push_flag(self):
         self.api.push_access = False
-        with self.assertRaisesRegex(RELEASE.ReleaseError, "push access to see all existing drafts"):
-            self.plan()
+        first = self.plan()["items"][0]
+        self.assertEqual(first["version"], "0.1.0")
         self.assertEqual(self.api.writes, [])
+        self.publish(first)
+        self.assertTrue(self.api.releases[1]["draft"])
+        self.api.writes.clear()
+        self.assertEqual([(p["pr"], p["version"]) for p in self.plan()["items"]], [(2, "0.1.1"), (3, "0.1.2")])
+        self.assertEqual(self.api.writes, [])
+
+    def test_missing_merge_commit_stops_planning_instead_of_skipping_the_pr(self):
+        for omitted in (False, True):
+            with self.subTest(omitted=omitted):
+                self.api = FakeGitHub([pull(1)])
+                if omitted:
+                    self.api.pulls[0].pop("merge_commit_sha")
+                else:
+                    self.api.pulls[0]["merge_commit_sha"] = None
+                with self.assertRaisesRegex(RELEASE.ReleaseError, "merged PR #1 is missing merge_commit_sha"):
+                    self.plan()
+                self.assertEqual(self.api.writes, [])
 
     def test_skipped_unmerged_other_branch_and_pre_workflow_prs_do_not_consume_versions(self):
         self.api.pulls = [pull(6), pull(5), pull(4), pull(3), pull(2), pull(1, "release:skip")]
@@ -435,6 +453,24 @@ class APIClientTests(unittest.TestCase):
         response.headers = {"Link": link}
         return response
 
+    def test_planning_surfaces_release_api_permission_errors_without_writes(self):
+        api = RELEASE.GitHub("example/ntikuma", "fixture-token")
+        api.opener = mock.Mock()
+        denied = urllib.error.HTTPError("https://api.github.com/repos/example/ntikuma/releases", 403, "Forbidden", {}, None)
+        self.addCleanup(denied.close)
+        api.opener.open.side_effect = [
+            self.response({"default_branch": "master", "permissions": {"push": False}}),
+            self.response({"commit": {"sha": sha(10)}}),
+            self.response({"status": "identical"}),
+            self.response([]),
+            denied,
+        ]
+        with self.assertRaisesRegex(RELEASE.ReleaseError, "GitHub GET failed with HTTP 403"):
+            RELEASE.plan_releases(api, FakeHistory())
+        requests = [call.args[0] for call in api.opener.open.call_args_list]
+        self.assertTrue(requests[-1].full_url.endswith("/releases?per_page=100"))
+        self.assertTrue(all(request.get_method() == "GET" for request in requests))
+
     def test_pagination_uses_link_headers_and_canonical_repository_url(self):
         api = RELEASE.GitHub("example/ntikuma", "fixture-token")
         api.opener = mock.Mock()
@@ -443,6 +479,15 @@ class APIClientTests(unittest.TestCase):
         self.assertEqual(api.opener.open.call_args.args[0].full_url, "https://api.github.com/repos/example/ntikuma")
         self.assertEqual(api.all("releases"), [1, 2])
         self.assertEqual(api.opener.open.call_count, 3)
+
+    def test_requests_pin_the_api_version_that_returns_merge_commit_sha(self):
+        api = RELEASE.GitHub("example/ntikuma", "fixture-token")
+        api.opener = mock.Mock()
+        api.opener.open.return_value = self.response([pull(1)])
+        api.all("pulls?state=closed&base=master")
+        request = api.opener.open.call_args.args[0]
+        # The 2026-03-10 API removes this field from every PR response.
+        self.assertEqual(request.get_header("X-github-api-version"), "2022-11-28")
 
     def test_read_only_clients_cannot_write_or_send_credentials_elsewhere(self):
         api = RELEASE.GitHub("example/ntikuma", "fixture-token")
