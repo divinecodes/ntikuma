@@ -453,6 +453,38 @@ class APIClientTests(unittest.TestCase):
         response.headers = {"Link": link}
         return response
 
+    def test_api_errors_report_the_endpoint_and_redacted_github_reason(self):
+        api = RELEASE.GitHub("example/ntikuma", "fixture-token", write=True)
+        api.opener = mock.Mock()
+        payload = {"message": "Resource not accessible by integration: fixture-token"}
+        denied = urllib.error.HTTPError("https://api.github.com/repos/example/ntikuma/git/refs", 403,
+                                       "Forbidden", {}, io.BytesIO(json.dumps(payload).encode()))
+        self.addCleanup(denied.close)
+        api.opener.open.side_effect = denied
+        with self.assertRaises(RELEASE.ReleaseError) as raised:
+            api.request("POST", "git/refs", {"ref": "refs/tags/v0.1.0", "sha": sha(1)})
+        message = str(raised.exception)
+        self.assertIn("GitHub POST failed with HTTP 403", message)
+        self.assertIn("/repos/example/ntikuma/git/refs", message)
+        self.assertIn("Resource not accessible by integration", message)
+        self.assertIn("<REDACTED>", message)
+        self.assertNotIn("fixture-token", message)
+        self.assertTrue(denied.closed)
+
+    def test_api_errors_handle_non_json_responses(self):
+        api = RELEASE.GitHub("example/ntikuma", "fixture-token")
+        api.opener = mock.Mock()
+        unavailable = urllib.error.HTTPError("https://api.github.com/repos/example/ntikuma/releases", 502,
+                                            "Bad Gateway", {}, io.BytesIO(b"<html>upstream unavailable</html>"))
+        self.addCleanup(unavailable.close)
+        api.opener.open.side_effect = unavailable
+        with self.assertRaises(RELEASE.ReleaseError) as raised:
+            api.all("releases")
+        self.assertIn("HTTP 502", str(raised.exception))
+        self.assertIn("/repos/example/ntikuma/releases", str(raised.exception))
+        self.assertIn("Bad Gateway", str(raised.exception))
+        self.assertTrue(unavailable.closed)
+
     def test_planning_surfaces_release_api_permission_errors_without_writes(self):
         api = RELEASE.GitHub("example/ntikuma", "fixture-token")
         api.opener = mock.Mock()

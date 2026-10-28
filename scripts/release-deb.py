@@ -104,9 +104,21 @@ class GitHub:
                 next_url = next((part.split(">")[0].strip().lstrip("<") for part in links.split(",") if 'rel="next"' in part), None)
                 return json.loads(raw) if raw else None, next_url
         except urllib.error.HTTPError as error:
-            if missing and error.code == 404:
-                return None, None
-            raise ReleaseError(f"GitHub {method} failed with HTTP {error.code}; rerun after resolving the failure") from error
+            with error:
+                if missing and error.code == 404:
+                    return None, None
+                reason = str(error.reason)
+                try:
+                    payload = json.loads(error.read(65536))
+                    if isinstance(payload, dict) and isinstance(payload.get("message"), str):
+                        reason = payload["message"]
+                except (ValueError, UnicodeDecodeError):
+                    pass
+            if self.token:
+                reason = reason.replace(self.token, "<REDACTED>")
+            reason = " ".join(reason.split())[:500]
+            endpoint = urllib.parse.urlsplit(url).path
+            raise ReleaseError(f"GitHub {method} failed with HTTP {error.code} for {endpoint}: {reason}") from error
 
     def request(self, method, path, body=None, **kwargs):
         return self._request(method, path, body, **kwargs)[0]

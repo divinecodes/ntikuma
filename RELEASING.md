@@ -35,7 +35,25 @@ Tags use the GitHub Actions bot's noreply identity. The workflow creates no vers
 
 Published releases and completed drafts are not overwritten. Interrupted pending uploads can be retried; only incomplete managed draft assets may be replaced. An unmanaged version tag/release, changed completed asset, or missing metadata stops automation for manual review.
 
-Runs are serialized with GitHub concurrency. GitHub can replace pending runs, so each run reads unreleased PR history rather than relying only on its triggering PR. It handles up to three versions, then dispatches another catch-up run if needed. This bounds build time without dropping older merges. The workflow uses only `GITHUB_TOKEN`; no PAT or publishing secret is required.
+Runs are serialized with GitHub concurrency. GitHub can replace pending runs, so each run reads unreleased PR history rather than relying only on its triggering PR. It handles up to three versions, then dispatches another catch-up run if needed. This bounds build time without dropping older merges.
+
+## GitHub App setup
+
+The publisher needs a GitHub App installed only on this repository. Creating historical tags or releases can require workflow-write authorization when their source differs from current `master`. GitHub's built-in `GITHUB_TOKEN` cannot receive that permission. See [GitHub's reference permissions](https://docs.github.com/en/rest/git/refs#create-a-reference) and [release authorization](https://docs.github.com/en/rest/releases/releases#create-a-release).
+
+1. Under your personal account's **Settings > Developer settings > GitHub Apps**, register a private app. Set its homepage to the repository URL, disable webhooks, and select **Only on this account**. Grant repository **Contents: Read and write**, **Workflows: Read and write**, and **Pull requests: Read-only**. Metadata read access is automatic; no other permissions are needed.
+2. Install the app on your account, choose **Only select repositories**, and select `ntikuma`.
+3. Copy the app's **Client ID**. In **Credentials > Key pairs**, create and download a private key. Some layouts show **Private keys > Generate a private key** instead. Store the PEM securely outside the checkout.
+4. In repository **Settings > Secrets and variables > Actions**, save variable `NTIKUMA_RELEASE_APP_CLIENT_ID` and secret `NTIKUMA_RELEASE_APP_PRIVATE_KEY`, containing the full PEM. With `gh` authenticated as the repository owner:
+
+   ```bash
+   gh variable set NTIKUMA_RELEASE_APP_CLIENT_ID --repo divinecodes/ntikuma --body 'YOUR_CLIENT_ID'
+   gh secret set NTIKUMA_RELEASE_APP_PRIVATE_KEY --repo divinecodes/ntikuma < /absolute/path/to/private-key.pem
+   ```
+
+The workflow checks configuration before building. Only the publishing job receives the key and creates a short-lived token, restricted to this repository and the permissions above. The token is revoked when that job finishes. Planning keeps using `GITHUB_TOKEN`, and builds receive no publishing credential. Do not add the app to branch-protection bypass lists.
+
+For key rotation, generate a replacement, update the repository secret, validate a release, then delete the old key in the app settings. [App registration](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app), [private-key management](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps).
 
 ## First release and recovery
 
@@ -45,7 +63,7 @@ After this workflow is merged, its first automatic run prepares `0.1.0` unless t
 gh workflow run release.yml --repo divinecodes/ntikuma --ref master -f bootstrap=true
 ```
 
-For a failed or missed run, rerun it in Actions, or request a catch-up without bootstrap:
+For a failed or missed run, rerun it in Actions, or request a catch-up without bootstrap. After merging a workflow change, start a new run from `master` so it uses the updated job configuration:
 
 ```bash
 gh workflow run release.yml --repo divinecodes/ntikuma --ref master
