@@ -43,6 +43,16 @@ jobs:
       work: ${{ steps.plan.outputs.work }}
       artifact: ${{ steps.plan.outputs.artifact }}
     steps:
+      - name: Check release app configuration
+        env:
+          APP_CLIENT_ID: ${{ vars.NTIKUMA_RELEASE_APP_CLIENT_ID }}
+          APP_PRIVATE_KEY_CONFIGURED: ${{ secrets.NTIKUMA_RELEASE_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [[ -z "$APP_CLIENT_ID" || "$APP_PRIVATE_KEY_CONFIGURED" != true ]]; then
+            echo '::error::Configure NTIKUMA_RELEASE_APP_CLIENT_ID and NTIKUMA_RELEASE_APP_PRIVATE_KEY; see RELEASING.md#github-app-setup.'
+            exit 1
+          fi
+
       - name: Check out trusted master and history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -144,8 +154,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: write
-      pull-requests: read
+      contents: read
       actions: read
     steps:
       - name: Check out trusted release controller
@@ -161,10 +170,22 @@ jobs:
           name: ${{ needs.build.outputs.artifact }}
           path: ${{ runner.temp }}/ntikuma-release-assets
 
+      - name: Create repository-scoped publishing token
+        id: release-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.NTIKUMA_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NTIKUMA_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-workflows: write
+          permission-pull-requests: read
+
       # This job validates data and uses the API; it never runs candidate code.
       - name: Verify assets and prepare drafts
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.release-token.outputs.token }}
         run: >-
           python3 scripts/release-deb.py publish
           --artifacts "$RUNNER_TEMP/ntikuma-release-assets" --apply
