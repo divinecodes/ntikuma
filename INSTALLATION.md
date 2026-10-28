@@ -56,6 +56,8 @@ Save your OpenRouter key in Preferences to send questions. It is stored in GNOME
 
 The Linux amd64 package targets Ubuntu 24.04 and Debian 13 with GNOME. It installs the app at `/usr/bin/ntikuma` and the native speech helper and libraries under `/usr/lib/ntikuma/`. Parakeet, Qwen, and Cohere model downloads remain separate. Whisper still requires its separately installed server.
 
+Reviewed packages appear on the [releases page](https://github.com/divinecodes/ntikuma/releases) after the maintainer publishes them. Download the `.deb`, `SHA256SUMS`, and `release.json` from the same release and keep them together for verification. Automatic builds remain drafts until reviewed.
+
 To build a package, first complete the source prerequisites and bootstrap above, then install the packaging tools:
 
 ```bash

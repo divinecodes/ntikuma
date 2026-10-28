@@ -299,8 +299,11 @@ class DebianMigrationTests(unittest.TestCase):
     def test_running_instance_guard_does_not_stop_the_process(self):
         binary = self.root / "running/ntikuma"
         binary.parent.mkdir()
-        shutil.copy2("/bin/sleep", binary)
-        process = subprocess.Popen([str(binary), "30"])
+        # Multicall coreutils select their program from argv[0], so copying
+        # sleep under the app name is not a portable process fixture.
+        subprocess.run(["cc", "-x", "c", "-o", str(binary), "-"], input="#include <unistd.h>\nint main(void) { for (;;) pause(); }\n",
+                       text=True, capture_output=True, check=True)
+        process = subprocess.Popen([str(binary)])
         try:
             with self.assertRaisesRegex(MIGRATION.MigrationError, "quit Ntikuma"):
                 ENSURE_STOPPED()

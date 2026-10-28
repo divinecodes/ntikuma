@@ -121,6 +121,8 @@ The package and `SHA256SUMS` are written under `bin/packages/0.1.0/`. See [Debia
 
 Moving from `scripts/install.sh`? Follow the [source-install migration](INSTALLATION.md#move-a-source-installation-to-the-debian-package). `ntikuma-migrate-deb` previews the transition; `--apply` creates private backups and updates existing launchers, shortcuts, and known speech-helper paths while keeping your chats and models.
 
+Merged PRs prepare draft GitHub releases, starting at `0.1.0` and incrementing patches by default. `release:minor`, `release:major`, and `release:skip` override that behavior. See the [release process](https://github.com/divinecodes/ntikuma/blob/master/RELEASING.md) for review, recovery, and initial setup. Publishing a draft remains a maintainer action.
+
 ## Install for daily use
 
 Build first, then run the installer from the repository root:
