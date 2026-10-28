@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Ntikuma
+Comment=Start Ntikuma in the tray
+Exec=/usr/bin/env @BIN@ start
+Icon=dev.divinetettey.ntikuma
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3

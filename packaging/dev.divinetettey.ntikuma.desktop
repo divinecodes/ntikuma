@@ -1,0 +1,30 @@
+[Desktop Entry]
+Type=Application
+Name=Ntikuma
+GenericName=Desktop assistant
+Comment=Ask an LLM from anywhere on your desktop
+Exec=/usr/bin/env @BIN@ show
+Icon=dev.divinetettey.ntikuma
+Terminal=false
+Categories=Utility;
+Keywords=ai;llm;chat;assistant;openrouter;
+StartupNotify=true
+StartupWMClass=dev.divinetettey.ntikuma
+SingleMainWindow=true
+Actions=voice;history;settings;quit;
+
+[Desktop Action voice]
+Name=Dictate
+Exec=/usr/bin/env @BIN@ voice
+
+[Desktop Action history]
+Name=History
+Exec=/usr/bin/env @BIN@ history
+
+[Desktop Action settings]
+Name=Preferences
+Exec=/usr/bin/env @BIN@ settings
+
+[Desktop Action quit]
+Name=Quit
+Exec=/usr/bin/env @BIN@ quit

@@ -1,0 +1,34 @@
+{
+  "model": "anthropic/claude-sonnet-5.5",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "tool_calls",
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "type": "function",
+            "index": 0,
+            "id": "call_demo_function",
+            "function": {
+              "name": "get_demo_fact",
+              "arguments": "{\"topic\": \"go-release\"}"
+            }
+          }
+        ],
+        "reasoning": "REDACTED_PROBE_REASONING",
+        "reasoning_details": [
+          {
+            "type": "reasoning.text",
+            "text": "REDACTED_PROBE_STATE",
+            "format": "anthropic-claude-v1",
+            "index": 0,
+            "signature": "REDACTED_PROBE_STATE"
+          }
+        ]
+      }
+    }
+  ]
+}

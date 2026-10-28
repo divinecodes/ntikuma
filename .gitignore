@@ -1,0 +1,35 @@
+.task
+/.tasks/
+
+# Local credentials. Keep intentionally blank example files shareable.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Personal chat data, SQLite sidecars and recordings.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.flac
+!**/testdata/**/*.wav
+!**/testdata/**/*.mp3
+!**/testdata/**/*.m4a
+!**/testdata/**/*.ogg
+!**/testdata/**/*.flac
+
+bin
+frontend/dist
+frontend/node_modules
+.idea/
+__pycache__/
+*.pyc
+/build/
+/docs/*

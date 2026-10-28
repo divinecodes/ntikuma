@@ -1,0 +1,393 @@
+/* Ntikuma: libadwaita-flavoured tokens, matching the design canvas. */
+:root {
+    --win: #fafafb;
+    --view: #ffffff;
+    --card: #ffffff;
+    --side: #f3f3f5;
+    --foot: #f1f1f3;
+    --fg: #1e1e22;
+    --dim: #5e5e66;
+    --placeholder: #6b6b73;
+    --border: #dcdce1;
+    --border-strong: #c4c4cb;
+    --hover: #ebebef;
+    --sel: #e3eefb;
+    --sel-text: #0a4fa3;
+    --accent: #1c71d8;
+    --accent-text: #0461be;
+    --red: #b01a25;
+    --red-tint: #fbe4e5;
+    --rec: #c01c28;
+    --rec-tint: #f7cdd0;
+    --warn-tint: #fdf0d5;
+    --warn-text: #7a4d00;
+    --mark: #fbe7a6;
+    --mark-text: #4a3500;
+    --code: #f3f3f5;
+    --kw: #8f1d6b;
+    --str: #1a6b3a;
+    --kbd: #e4e4e9;
+
+    --font: "Adwaita Sans", "Cantarell", system-ui, sans-serif;
+    --mono: "Adwaita Mono", "JetBrains Mono", "Source Code Pro", monospace;
+    --radius: 14px;
+
+    color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --win: #242428;
+        --view: #1d1d20;
+        --card: #2e2e32;
+        --side: #1f1f23;
+        --foot: #1f1f22;
+        --fg: #f4f4f6;
+        --dim: #a8a8b0;
+        --placeholder: #9a9aa2;
+        --border: #3a3a40;
+        --border-strong: #55555c;
+        --hover: #36363b;
+        --sel: #1f3550;
+        --sel-text: #a9cdf5;
+        --accent-text: #78aeed;
+        --red: #ff8a75;
+        --red-tint: #4a2326;
+        --rec-tint: #5a2328;
+        --warn-tint: #4a3a14;
+        --warn-text: #f5d48a;
+        --mark: #5c4a12;
+        --mark-text: #fbe7a6;
+        --code: #1c1c1f;
+        --kw: #f08fc8;
+        --str: #8fd6a8;
+        --kbd: #3a3a40;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    overflow: hidden;
+    font-family: var(--font);
+    font-size: 14px;
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+}
+
+#app {
+    /* Keep the card anchored while the native window catches up with its height. */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+}
+
+.side-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 52px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--border);
+}
+.side-header h1 { margin: 0; font-size: 16px; }
+.side-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px;
+    max-height: 620px;
+    overflow-y: auto;
+}
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field input, .field textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--view);
+}
+.field textarea { resize: vertical; }
+
+button,
+input,
+textarea,
+select {
+    font: inherit;
+    color: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--placeholder);
+}
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+kbd {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: var(--kbd);
+    color: var(--fg);
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* Shared bits used by several views */
+.icon-btn {
+    width: 36px;
+    height: 36px;
+    flex: none;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fg);
+    display: grid;
+    place-items: center;
+}
+.icon-btn:hover {
+    background: var(--hover);
+}
+.icon-btn.round {
+    border-radius: 18px;
+    color: var(--dim);
+}
+
+.pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 8px;
+    background: var(--hover);
+    font-size: 13px;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 8px;
+    background: var(--hover);
+    font-size: 14px;
+    font-weight: 700;
+}
+.btn.primary {
+    background: var(--accent);
+    color: #ffffff;
+}
+.btn.flat {
+    background: transparent;
+    font-weight: 400;
+}
+.btn.destructive {
+    background: var(--red-tint);
+    color: var(--red);
+}
+.btn kbd {
+    font-weight: 400;
+}
+.btn.primary kbd {
+    background: rgba(255, 255, 255, 0.22);
+    color: #ffffff;
+}
+
+.hints {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding: 10px 18px;
+    background: var(--foot);
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--dim);
+}
+.hints kbd {
+    margin-right: 5px;
+}
+
+.error {
+    margin: 0 18px 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--red-tint);
+    color: var(--red);
+    font-size: 13px;
+}
+
+/* Rendered Markdown in answers */
+.md {
+    font-size: 15px;
+    line-height: 1.6;
+    user-select: text;
+    overflow-wrap: anywhere;
+}
+.md > :first-child {
+    margin-top: 0;
+}
+.md > :last-child {
+    margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol {
+    margin: 0 0 10px;
+}
+.md code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--code);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 4px;
+}
+.md pre {
+    margin: 0 0 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--code);
+    overflow-x: auto;
+}
+.md pre code {
+    display: block;
+    border: none;
+    padding: 0;
+    background: none;
+    line-height: 20px;
+    overflow-wrap: normal;
+}
+.md .code-block {
+    margin: 0 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--code);
+    overflow: hidden;
+}
+.md .code-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 10px 6px 14px;
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+}
+.md .code-language {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--dim);
+    font-family: var(--mono);
+    font-size: 12px;
+}
+.md .code-copy {
+    flex: none;
+    min-height: 28px;
+    padding: 3px 8px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--dim);
+    font-size: 12px;
+}
+.md .code-copy:hover {
+    background: var(--hover);
+}
+.md .code-copy:disabled {
+    cursor: wait;
+}
+.md .code-block pre {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+}
+.md .hljs-keyword,
+.md .hljs-selector-tag,
+.md .hljs-literal,
+.md .hljs-name {
+    color: var(--kw);
+}
+.md .hljs-string,
+.md .hljs-regexp,
+.md .hljs-symbol,
+.md .hljs-bullet,
+.md .hljs-addition {
+    color: var(--str);
+}
+.md .hljs-title,
+.md .hljs-section,
+.md .hljs-attr,
+.md .hljs-attribute,
+.md .hljs-type,
+.md .hljs-built_in {
+    color: var(--accent-text);
+}
+.md .hljs-number,
+.md .hljs-meta {
+    color: var(--warn-text);
+}
+.md .hljs-comment,
+.md .hljs-quote,
+.md .hljs-doctag {
+    color: var(--dim);
+    font-style: italic;
+}
+.md .hljs-deletion {
+    color: var(--red);
+}
+.md .hljs-strong {
+    font-weight: 700;
+}
+.md .hljs-emphasis {
+    font-style: italic;
+}
+.md a {
+    color: var(--accent-text);
+}
+.md blockquote {
+    margin: 0 0 10px;
+    padding-left: 12px;
+    border-left: 3px solid var(--border-strong);
+    color: var(--dim);
+}
+.md table {
+    border-collapse: collapse;
+    margin: 0 0 10px;
+}
+.md th,
+.md td {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+}

@@ -1,0 +1,13 @@
+{
+  "model": "anthropic/claude-sonnet-5.5",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "The confirmation code is **NTIKUMA-DEMO-42**. The tool reported that the fact came from a synthetic fixture and that nothing ran locally."
+      }
+    }
+  ]
+}

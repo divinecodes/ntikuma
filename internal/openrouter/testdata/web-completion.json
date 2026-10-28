@@ -1,0 +1,39 @@
+{
+  "model": "anthropic/claude-sonnet-5.5",
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "message": {
+        "content": "**The latest stable Go release is 1.27.3, released 2026-10-19.** It is a minor revision of Go 1.27.\n\nI checked this on the official Go release history page (https://go.dev/doc/devel/release). It lists go1.27.0 as released 2026-08-19. It lists go1.27.3 as released 2026-10-19, with security fixes to `crypto/x509`. The Go 1.27 release notes (https://go.dev/doc/go1.27) describe 1.27 as the latest major release. A third-party tracker agrees on 1.27.3, dated 2026-10-20, which is one day off the official date.\n\nSome of the other search results were out of date or wrong:\n- Wikipedia still lists 1.27.1 (1 September 2026), and a GitHub pull request says the same.\n- VersionLog labels 1.26.10 as \"Latest Stable\" and calls 1.27.3 a pre-release. The official page treats 1.27 as a normal stable major release.\n\nThe 1.26 line is still supported. Its latest patch is go1.26.10, also released 2026-10-19.",
+        "annotations": [
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://www.versio.io/en/product-release-end-of-life-eol-google-go.html",
+              "title": "Go releases, versions & end-of-life (EOL) dates"
+            }
+          },
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://en.wikipedia.org/wiki/Go_(programming_language)",
+              "title": "Go (programming language)"
+            }
+          },
+          {
+            "type": "url_citation",
+            "url_citation": {
+              "url": "https://versionlog.com/golang/",
+              "title": "Go Latest Version - Support Lifecycle & EOL — VersionLog"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "usage": {
+    "server_tool_use_details": {
+      "web_search_requests": 1
+    }
+  }
+}

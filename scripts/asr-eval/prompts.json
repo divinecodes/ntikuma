@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "name": "Personal English dictation, references must match actual speech",
+  "clips": [
+    {"id": "conversation-01", "wav": "audio/conversation-01.wav", "group": "conversation", "reference": "Could you help me understand why the application closes when I press Escape?"},
+    {"id": "conversation-02", "wav": "audio/conversation-02.wav", "group": "conversation", "reference": "I would like to continue the same conversation after reopening the window."},
+    {"id": "conversation-03", "wav": "audio/conversation-03.wav", "group": "conversation", "reference": "Please summarize the meeting and tell me what I need to do before Friday."},
+    {"id": "conversation-04", "wav": "audio/conversation-04.wav", "group": "conversation", "reference": "Actually, let me start again. I meant next Tuesday, not this Tuesday."},
+    {"id": "conversation-05", "wav": "audio/conversation-05.wav", "group": "conversation", "reference": "I don't think that is the right answer. Could you explain your reasoning?"},
+    {"id": "conversation-06", "wav": "audio/conversation-06.wav", "group": "conversation", "reference": "Show me the sources for that claim and open the first link in my browser."},
+    {"id": "code-01", "wav": "audio/code-01.wav", "group": "code", "reference": "Run go test with the race detector and show me which tests are failing."},
+    {"id": "code-02", "wav": "audio/code-02.wav", "group": "code", "reference": "The JSON response contains a user ID, a timestamp, and an optional error message."},
+    {"id": "code-03", "wav": "audio/code-03.wav", "group": "code", "reference": "Create a new Git branch and update the TypeScript interface without changing the database schema."},
+    {"id": "code-04", "wav": "audio/code-04.wav", "group": "code", "reference": "The API request times out on localhost when the server is not running."},
+    {"id": "names-01", "wav": "audio/names-01.wav", "group": "names", "reference": "Ama and Kwame are meeting in Accra before travelling to Kumasi."},
+    {"id": "names-02", "wav": "audio/names-02.wav", "group": "names", "reference": "Please send the notes to Amina, Joseph, and Priya after the London meeting."},
+    {"id": "numbers-01", "wav": "audio/numbers-01.wav", "group": "numbers", "reference": "The invoice total is one thousand two hundred and fifty Ghana cedis."},
+    {"id": "numbers-02", "wav": "audio/numbers-02.wav", "group": "numbers", "reference": "Schedule the call for half past nine on the twenty sixth of October."},
+    {"id": "numbers-03", "wav": "audio/numbers-03.wav", "group": "numbers", "reference": "Version three point two is faster, but the memory limit is still eight gigabytes."},
+    {"id": "short-01", "wav": "audio/short-01.wav", "group": "short", "reference": "Stop."},
+    {"id": "short-02", "wav": "audio/short-02.wav", "group": "short", "reference": "New chat."},
+    {"id": "background-01", "wav": "audio/background-01.wav", "group": "normal-background", "reference": "Can you still understand this question with the usual background noise in the room?"},
+    {"id": "silence-01", "wav": "audio/silence-01.wav", "group": "silence", "kind": "silence", "reference": ""},
+    {"id": "silence-02", "wav": "audio/silence-02.wav", "group": "silence", "kind": "silence", "reference": ""}
+  ]
+}

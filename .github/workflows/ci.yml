@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: "25 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Keep this minor aligned with both go.mod files; always use its latest patch.
+  GO_VERSION: "1.26.x"
+  GOVULNCHECK_VERSION: "v1.6.0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secrets scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install verified Gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$archive" | sha256sum --check --strict
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP" gitleaks
+
+      - name: Scan history with secrets redacted
+        run: >-
+          "$RUNNER_TEMP/gitleaks" git --no-banner --redact=100
+          --ignore-gitleaks-allow --log-opts=--all .
+
+  linux:
+    name: Linux checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
+            python3 desktop-file-utils libglib2.0-bin gnome-settings-daemon-common \
+            binutils dpkg-dev patchelf
+
+      - name: Bootstrap pinned Wails tooling and dependencies
+        run: ./scripts/bootstrap.sh
+
+      - name: Check paired Wails dependencies
+        run: |
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          module = re.search(r"github.com/wailsapp/wails/v3\s+v(\S+)", Path("go.mod").read_text()).group(1)
+          runtime = json.loads(Path("frontend/package.json").read_text())["dependencies"]["@wailsio/runtime"]
+          if module != runtime:
+              raise SystemExit("Update the Wails Go module and @wailsio/runtime together at the same exact version")
+          PY
+
+      - name: Check Go formatting
+        run: |
+          unformatted=$(git ls-files -z '*.go' | xargs -0 gofmt -l)
+          if [[ -n "$unformatted" ]]; then
+            printf 'Run gofmt on:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
+      # Generate bindings and embedded frontend assets before checking Go.
+      - name: Build production application
+        run: wails3 build
+
+      - name: Check frontend types
+        working-directory: frontend
+        run: npm run check
+
+      - name: Test frontend
+        working-directory: frontend
+        run: npm test
+
+      - name: Test Go with race detection
+        run: go test -race -count=1 ./...
+
+      - name: Vet Go
+        run: go vet ./...
+
+      - name: Install pinned Go vulnerability scanner
+        run: go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+
+      - name: Check reachable Go vulnerabilities
+        run: govulncheck ./...
+
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: |
+          npm audit --omit=dev --audit-level=low
+          npm audit --audit-level=moderate
+
+      - name: Test installation and evaluation scripts
+        run: python3 -m unittest discover -s scripts/tests -v
+
+      - name: Build complete Debian package
+        run: python3 scripts/package-deb.py --version 0.1.0
+
+      - name: Validate extracted Debian package
+        env:
+          NTIKUMA_TEST_DEB_PATH: bin/packages/0.1.0/ntikuma_0.1.0_amd64.deb
+        run: python3 -m unittest discover -s scripts/tests -p test_deb_package.py -v
+
+      - name: Check dependency files stayed unchanged
+        run: git diff --exit-code -- go.mod go.sum frontend/package.json frontend/package-lock.json
+
+  speech-helper:
+    name: Native speech helper
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: "1"
+      # Match the module cache used by build-asr-helper.py.
+      GOMODCACHE: ${{ github.workspace }}/build/asr-native/gomodcache
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: tools/asr/go.sum
+
+      - name: Build and smoke-test native speech helper
+        run: python3 scripts/build-asr-helper.py
+
+      - name: Test helper with race detection
+        working-directory: tools/asr
+        run: go test -race -count=1 ./...
+
+      - name: Vet helper
+        working-directory: tools/asr
+        run: go vet ./...
+
+      - name: Install pinned Go vulnerability scanner
+        run: go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+
+      - name: Check reachable helper vulnerabilities
+        working-directory: tools/asr
+        run: govulncheck ./...

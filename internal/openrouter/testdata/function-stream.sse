@@ -1,0 +1,18 @@
+: OPENROUTER PROCESSING
+
+data: {"model":"anthropic/claude-sonnet-5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_demo_function","type":"function","function":{"name":"get_demo_fact","arguments":""}}]}}]}
+
+data: {"model":"anthropic/claude-sonnet-5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"function":{"arguments":""}}]}}]}
+
+data: {"model":"anthropic/claude-sonnet-5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"function":{"arguments":"{\"topic\": \"phase14"}}]}}]}
+
+data: {"model":"anthropic/claude-sonnet-5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"function":{"arguments":"-probe"}}]}}]}
+
+data: {"model":"anthropic/claude-sonnet-5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"function":{"arguments":"\"}"}}]}}]}
+
+data: {"model":"anthropic/claude-sonnet-5","choices":[{"index":0,"finish_reason":"tool_calls","delta":{"role":"assistant","content":""}}]}
+
+data: {"model":"anthropic/claude-sonnet-5","choices":[{"index":0,"finish_reason":"tool_calls","delta":{"role":"assistant","content":""}}]}
+
+data: [DONE]
+

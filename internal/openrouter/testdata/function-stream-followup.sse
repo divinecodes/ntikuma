@@ -1,0 +1,30 @@
+: OPENROUTER PROCESSING
+
+: OPENROUTER PROCESSING
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":"The confirmation code for"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":" the ph"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":"ase14-probe f"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":"act is **NTIKU"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":"MA-DEMO-"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":"42**. The tool said"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":" it came from a synthetic"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":" fixture and"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":" that n"}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":null,"delta":{"role":"assistant","content":"othing was run locally."}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":"stop","delta":{"role":"assistant","content":""}}]}
+
+data: {"model":"anthropic/claude-sonnet-5.5","choices":[{"index":0,"finish_reason":"stop","delta":{"role":"assistant","content":""}}]}
+
+data: [DONE]
+

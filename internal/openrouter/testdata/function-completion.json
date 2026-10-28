@@ -1,0 +1,24 @@
+{
+  "model": "anthropic/claude-sonnet-5",
+  "choices": [
+    {
+      "index": 0,
+      "finish_reason": "tool_calls",
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "type": "function",
+            "index": 0,
+            "id": "call_demo_function",
+            "function": {
+              "name": "get_demo_fact",
+              "arguments": "{\"topic\": \"phase14-probe\"}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

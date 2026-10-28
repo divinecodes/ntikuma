@@ -1,0 +1,172 @@
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "The lat"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "est stable Go release is **"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "Go 1.27.3"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "**, released "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "2026-10-19."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "\n\nI checked this"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " against the official Go release history"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " page (https://go.dev"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "/doc/devel/release"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "). It"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " l"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "ists Go 1.27."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "0 as a major release on"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " 2026-08-19."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " Its minor revisions are "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "1.27.1 (2"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "026-09-01), 1"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": ".27.2 (2026"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "-10-08)"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " and 1.27.3 "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "(2026-10-19)."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " Go 1.27.3"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " is the newest entry and"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " cont"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "ains security fixes to the `"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "crypto/x509` package"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " The"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " Go 1.27 release not"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "es (https://go.dev"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "/doc/go1.27"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": ") also"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " call "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "1.27 the latest"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " Go release."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "\n\nOther sources agre"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "ed with the official page or"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " were out"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " of date:"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "\n- "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"annotations": [{"type": "url_citation", "url_citation": {"url": "https://www.versio.io/en/product-release-end-of-life-eol-google-go.html", "title": "Go releases, versions & end-of-life (EOL) dates"}}]}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "Versio"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": ".io lists 1.27"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": ".3 as the latest "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "1.27 version"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": ", dated 2026-10"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "-20."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " That is"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " one day later"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " than the official date"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": ".\n- "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"annotations": [{"type": "url_citation", "url_citation": {"url": "https://en.wikipedia.org/wiki/Go_(programming_language)", "title": "Go (programming language)"}}]}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "Wikipedia still"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " lists 1.27.1"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " ("}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "1 September 2026)"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " as the stable release."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " That is out"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "dated.\n- "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"annotations": [{"type": "url_citation", "url_citation": {"url": "https://versionlog.com/golang/", "title": "Go Latest Version - Support Lifecycle & EOL — VersionLog"}}]}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "VersionLog lab"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "els 1.26.10 "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "as \""}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "Latest Stable\" and "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "1.27.3 as \""}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "P"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "re-release\"."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " This contradicts"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " the official page, which treats "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "1.27 as a full"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " major release.\n\nThe official page also"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " sh"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "ows"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " Go 1.26.10 "}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "(2"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "026-10-19) as the"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " new"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "est pat"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": "ch of"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " the previous major line"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": ","}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " which"}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"delta": {"content": " is still supported."}}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"finish_reason": "stop"}]}
+
+data: {"model": "anthropic/claude-sonnet-5.5", "choices": [{"finish_reason": "stop"}], "usage": {"server_tool_use_details": {"web_search_requests": 1}}}
+
+data: [DONE]
+

@@ -1,0 +1,18 @@
+{
+  "name": "ntikuma",
+  "arch": "amd64",
+  "platform": "linux",
+  "version": "0.1.0",
+  "section": "utils",
+  "priority": "optional",
+  "maintainer": "Divine Tettey <14117975+divinecodes@users.noreply.github.com>",
+  "description": "GNOME desktop assistant with local voice transcription and OpenRouter chat",
+  "homepage": "https://github.com/divinecodes/ntikuma",
+  "license": "MIT",
+  "depends": ["pipewire-bin | pulseaudio-utils", "python3", "libglib2.0-bin"],
+  "recommends": ["gnome-keyring", "xdg-desktop-portal-gnome"],
+  "deb": {
+    "compression": "xz",
+    "fields": {"Bugs": "https://github.com/divinecodes/ntikuma/issues"}
+  }
+}
