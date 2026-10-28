@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      # GitHub hides drafts from callers without push access. Planning uses GET only.
+      # Required to include draft releases. Planning uses GET requests only.
       contents: write
       pull-requests: read
     outputs:

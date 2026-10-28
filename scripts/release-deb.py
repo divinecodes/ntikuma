@@ -21,6 +21,8 @@ TAG_HEADER = "Ntikuma release plan v1\n"
 MARKER = re.compile(r"<!-- ntikuma-release (.*?) -->")
 BATCH_SIZE = 3
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
+# PR planning needs merge_commit_sha, removed from the 2026-03-10 API.
+API_VERSION = "2022-11-28"
 
 
 class ReleaseError(Exception):
@@ -90,7 +92,7 @@ class GitHub:
             raise ReleaseError("refusing to send a token outside the GitHub API")
         data = upload.read_bytes() if upload else (canonical(body).encode() if body is not None else None)
         headers = {"Accept": "application/vnd.github+json", "User-Agent": "ntikuma-releases",
-                   "X-GitHub-Api-Version": "2026-03-10"}
+                   "X-GitHub-Api-Version": API_VERSION}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         if data is not None:
@@ -223,8 +225,9 @@ def plan_releases(api, history, bootstrap=False, limit=BATCH_SIZE):
     repo = api.request("GET", "")
     if repo["default_branch"] != "master":
         raise ReleaseError("release automation expects master as the default branch")
-    if repo.get("permissions", {}).get("push") is False:
-        raise ReleaseError("draft release planning needs push access to see all existing drafts")
+    # Repository role flags do not describe an Actions installation token's
+    # granular access. The workflow grants contents: write for draft visibility;
+    # let GitHub authorize the API requests rather than rejecting permissions.push.
     master = api.request("GET", "branches/master")["commit"]["sha"]
     comparison = api.request("GET", f"compare/{history.cutoff}...{master}")
     if comparison["status"] not in {"ahead", "identical"}:
@@ -242,9 +245,11 @@ def plan_releases(api, history, bootstrap=False, limit=BATCH_SIZE):
     baseline = history.positions[ordered[-1]["sha"]] if ordered else -1
     candidates = []
     for pr in api.all("pulls?state=closed&base=master&sort=updated&direction=desc"):
-        sha = pr.get("merge_commit_sha")
         if not pr.get("merged_at") or pr["base"]["ref"] != "master" or pr["base"]["repo"]["full_name"].lower() != api.repo.lower():
             continue
+        sha = pr.get("merge_commit_sha")
+        if not sha:
+            raise ReleaseError(f"merged PR #{pr['number']} is missing merge_commit_sha; verify the GitHub API version before retrying")
         if sha not in history.positions or history.positions[sha] <= baseline or not history.eligible(sha):
             continue
         candidates.append(pr)
