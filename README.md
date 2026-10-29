@@ -38,6 +38,8 @@ wails3 dev
 
 Bootstrap installs the Wails CLI version pinned in `go.mod` when needed, generates missing local build tooling, downloads Go modules, runs `npm ci`, and checks native dependencies with `wails3 doctor`. The entire `build/` directory is ignored by Git. Bootstrap creates a temporary Wails project, applies Ntikuma's metadata and Linux packaging, and copies only missing build files into the checkout. Existing local build files and application source are preserved.
 
+After pulling dependency updates, check that Node meets the requirement above and rerun bootstrap before `wails3 dev`. This updates an older Wails CLI to match the project. Go also excludes `build/` from its package scans so the native speech helper's downloaded modules are not treated as application source.
+
 If you prefer to install the pinned CLI yourself, run it before bootstrap:
 
 ```bash

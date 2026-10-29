@@ -379,6 +379,8 @@ The default workspace is `build/asr-eval/`. To use another location, pass `--wor
 | Problem | What to check |
 | --- | --- |
 | `wails3` is missing or the version differs | Put Go's executable directory on PATH and rerun `./scripts/bootstrap.sh`; it installs the version in `go.mod`. |
+| npm reports `EBADENGINE` | Use Node.js 24.15 or newer on the Node 24 line, then rerun `./scripts/bootstrap.sh`. Node 24.14 is too old for the current frontend test dependencies. |
+| Go reports `build/asr-native/gomodcache/... should not have @version` | Use Go 1.26+ and the current `go.mod`, which excludes `build/` from package scans. Git's ignore rules alone do not exclude cached modules from Go. Keep the cache; it does not need deleting. |
 | `uv` or `python3.12` is missing | Complete the download-tools setup above and add the installation's executable directory to PATH. `prepare` does not download Python automatically. |
 | No recorder or no captured audio | Install `pipewire-bin` or `pulseaudio-utils`, select the microphone in GNOME Sound settings, and try the recorder command above. |
 | Model folder is missing files | Select the extracted bundle directory and rerun preparation for that model. Keep the tokenizer, external `.data` weights, and detector with their respective model. |
