@@ -62,6 +62,9 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 	seenCitations := make(map[string]bool)
 	seenCalls := make(map[string]bool)
 	continuationBytes := 0
+	// Once a local tool has run, the answer holds private data. Web fetch could
+	// send it to a URL a page or file chose, so later steps stop offering it.
+	localRan := false
 	appendMessage := func(message openrouter.Message) error {
 		raw, err := json.Marshal(message)
 		if err != nil {
@@ -81,7 +84,12 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 		}
 		// Removing a folder or disabling tools takes effect before another read,
 		// including while an answer is running. Enabling tools starts next turn.
-		req.Tools = append([]openrouter.Tool(nil), serverTools...)
+		req.Tools = nil
+		for _, tool := range serverTools {
+			if !(localRan && tool.Type == openrouter.WebFetchType) {
+				req.Tools = append(req.Tools, tool)
+			}
+		}
 		if localAtStart {
 			settings := s.cfg.Get()
 			settings.AllowShellCommands = settings.AllowShellCommands && shellAtStart
@@ -157,6 +165,7 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 			if err := ctx.Err(); err != nil {
 				return all, err
 			}
+			localRan = true
 			record := toolExecution{ToolActivity: ToolActivity{
 				CallID: call.ID, Name: call.Function.Name, Summary: toolSummary(call, true), Status: "started",
 			}, Call: call}

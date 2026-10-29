@@ -103,10 +103,15 @@ type Tool struct {
 	Function   *Function      `json:"function,omitempty"`
 }
 
+const (
+	WebSearchType = "openrouter:web_search"
+	WebFetchType  = "openrouter:web_fetch"
+)
+
 func WebTools(maxResults, maxFetches int) []Tool {
 	return []Tool{
-		{Type: "openrouter:web_search", Parameters: map[string]any{"max_results": maxResults}},
-		{Type: "openrouter:web_fetch", Parameters: map[string]any{"max_uses": maxFetches}},
+		{Type: WebSearchType, Parameters: map[string]any{"max_results": maxResults}},
+		{Type: WebFetchType, Parameters: map[string]any{"max_uses": maxFetches}},
 	}
 }
 

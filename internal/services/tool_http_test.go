@@ -44,7 +44,12 @@ func TestFileToolHTTPContinuationAcrossSSEAndJSON(t *testing.T) {
 					http.Error(w, "bad body", 400)
 					return
 				}
-				if !body.Provider.RequireParameters || body.Stream == web || len(body.Tools) != map[bool]int{false: 2, true: 4}[web] {
+				// Web fetch is withdrawn after the local read, so the continuation has three tools.
+				wantTools := map[bool]int{false: 2, true: 4}[web]
+				if web && requests > 0 {
+					wantTools = 3
+				}
+				if !body.Provider.RequireParameters || body.Stream == web || len(body.Tools) != wantTools {
 					t.Errorf("bad tool request: %+v", body)
 				}
 				step := requests
