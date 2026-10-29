@@ -2,7 +2,7 @@
 
 A GNOME popup assistant for quick questions. Open it with Super+Space, type or dictate a question, and dismiss it when you are done. Answers stream from OpenRouter, conversations stay in a local SQLite database, and voice transcription supports local Qwen3-ASR, Parakeet, Cohere Transcribe, or a separately installed whisper.cpp server.
 
-Built with Go, Wails v3.0.0-beta.28, and Svelte 5.
+Built with Go, Wails v3.0.0-beta.34, and Svelte 5.
 
 For a complete setup, see [Installation and local voice models](INSTALLATION.md). It covers app dependencies, model downloads, Voice Preferences, installed runtimes, and troubleshooting.
 
@@ -12,7 +12,7 @@ See [Privacy](PRIVACY.md) for what is processed locally and what goes to OpenRou
 
 - Linux with a GNOME desktop session.
 - Go 1.26 or newer, as required by `go.mod`.
-- Node.js 24 and npm for frontend development and tests.
+- Node.js 24.15 or newer on the Node 24 line, and npm for frontend development and tests.
 - An OpenRouter API key for answering questions.
 - For screenshots, an XDG desktop screenshot portal with interactive capture support. GNOME uses `xdg-desktop-portal` and `xdg-desktop-portal-gnome`.
 - For dictation, a microphone, `pw-record` or `parecord`, and a configured transcription runtime with a downloaded model.
@@ -41,7 +41,7 @@ Bootstrap installs the Wails CLI version pinned in `go.mod` when needed, generat
 If you prefer to install the pinned CLI yourself, run it before bootstrap:
 
 ```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.28
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.34
 export PATH="$(go env GOPATH)/bin:$PATH"
 
 ./scripts/bootstrap.sh

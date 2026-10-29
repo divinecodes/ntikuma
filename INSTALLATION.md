@@ -19,7 +19,7 @@ Downloads and builds require internet access. Once configured, these models can 
 
 ## Install and build Ntikuma
 
-Install Go 1.26+ and Node.js 24 with npm. On Ubuntu, install the system dependencies:
+Install Go 1.26+ and Node.js 24.15 or newer on the Node 24 line, with npm. On Ubuntu, install the system dependencies:
 
 ```bash
 sudo apt update
