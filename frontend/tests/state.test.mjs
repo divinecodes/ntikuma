@@ -1043,3 +1043,89 @@ test("failed sends decline early pending approvals and restore the question", as
     assert.equal(app.input, "Question"); assert.equal(app.approval, undefined);
     assert.deepEqual(h.approvalCalls, [["shell", "answer", "call", false]]);
 });
+
+test("a cut-off answer offers Continue, which leaves the draft and chips for the next question", async () => {
+    const app = await fresh();
+    const requests = [];
+    h.send = async (req) => {
+        requests.push(req);
+        return { chatId: "cut", messageId: `answer-${requests.length}`, title: "Cut" };
+    };
+    app.input = "Write a long essay";
+    await app.send();
+    assert.equal(app.canContinue, false);
+    h.handlers.delta({ chatId: "cut", messageId: "answer-1", text: "The first half" });
+    h.handlers.error({ chatId: "cut", messageId: "answer-1", error: "The answer reached the model's output limit and was cut off", cutOff: true });
+    assert.equal(app.messages[1].cutOff, true);
+    assert.equal(app.canContinue, true);
+    app.input = "an unsent draft";
+    app.attachments = [{ kind: "clipboard", label: "Clipboard", content: "copied" }];
+    await app.continueAnswer();
+    assert.equal(requests.length, 2);
+    assert.match(requests[1].text, /^Continue /);
+    assert.deepEqual(requests[1].attachments, []);
+    assert.equal(requests[1].chatId, "cut");
+    assert.equal(app.messages[2].role, "user");
+    assert.equal(app.messages[2].content, requests[1].text);
+    assert.equal(app.input, "an unsent draft");
+    assert.equal(app.attachments.length, 1);
+    assert.equal(app.canContinue, false);
+    await app.continueAnswer();
+    assert.equal(requests.length, 2, "Continue while answering sent again");
+    h.handlers.done({ chatId: "cut", messageId: "answer-2", stopped: false });
+    assert.equal(app.canContinue, false);
+});
+
+test("Continue is offered only on the last answer, and only when it stopped early", async () => {
+    const app = await fresh();
+    let n = 0;
+    h.send = async () => ({ chatId: "chat", messageId: `a${++n}`, title: "Chat" });
+    for (const [terminal, event, want] of [
+        ["done", { stopped: false }, false],
+        ["error", { error: "The provider's content filter stopped the answer" }, false],
+        ["done", { stopped: true, cutOff: true }, true],
+    ]) {
+        app.input = `question ${n + 1}`;
+        await app.send();
+        h.handlers.delta({ chatId: "chat", messageId: `a${n}`, text: "text" });
+        h.handlers[terminal]({ chatId: "chat", messageId: `a${n}`, ...event });
+        assert.equal(app.canContinue, want, JSON.stringify(event));
+    }
+    // A newer question makes the cut-off answer an older one.
+    app.input = "something else";
+    await app.send();
+    assert.equal(app.canContinue, false);
+    h.handlers.done({ chatId: "chat", messageId: `a${n}`, stopped: false });
+    assert.equal(app.canContinue, false);
+});
+
+test("History restores a cut-off answer that can be continued", async () => {
+    const app = await fresh();
+    h.detail = async () => ({ chat: { id: "saved", title: "Saved" }, messages: [
+        { id: "q", role: "user", content: "Write a long essay" },
+        { id: "answer", role: "assistant", content: "Partial", error: "The connection closed before the answer finished", cutOff: true },
+    ] });
+    await app.openChat("saved");
+    assert.equal(app.messages[1].cutOff, true);
+    assert.equal(app.canContinue, true);
+    let sent;
+    h.send = async (req) => { sent = req; return { chatId: "saved", messageId: "next", title: "Saved" }; };
+    await app.continueAnswer();
+    assert.equal(sent.chatId, "saved");
+});
+
+test("a failed Continue shows the error and can be retried without touching the draft", async () => {
+    const app = await fresh();
+    h.detail = async () => ({ chat: { id: "saved", title: "Saved" }, messages: [
+        { id: "answer", role: "assistant", content: "Partial", stopped: true, cutOff: true },
+    ] });
+    await app.openChat("saved");
+    app.input = "draft";
+    h.send = async () => { throw new Error("Rejected by provider"); };
+    await app.continueAnswer();
+    assert.equal(app.error, "Rejected by provider");
+    assert.equal(app.messages.length, 1);
+    assert.equal(app.input, "draft");
+    assert.equal(app.streaming, false);
+    assert.equal(app.canContinue, true);
+});

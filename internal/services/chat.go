@@ -248,9 +248,10 @@ func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, 
 	flush()
 
 	stopped := ctx.Err() != nil || errors.Is(err, context.Canceled)
+	resumable := cutOff(res.Text, stopped, err)
 	activity := activityViews(res.Activity)
 	if res.Text != "" || len(res.Citations) != 0 || res.Searches != nil || len(res.Activity) != 0 || stopped || err != nil {
-		meta := messageMeta{Citations: res.Citations, Searches: res.Searches, Activity: res.Activity, Stopped: stopped}
+		meta := messageMeta{Citations: res.Citations, Searches: res.Searches, Activity: res.Activity, Stopped: stopped, CutOff: resumable}
 		if err != nil && !stopped {
 			meta.Error = friendlyError(err)
 		}
@@ -266,12 +267,12 @@ func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, 
 	// A completion event allows the frontend to send a follow-up immediately.
 	finish()
 	if err != nil && !stopped {
-		s.events.Emit(EventChatError, ErrorEvent{ChatID: chatID, MessageID: answerID, Error: friendlyError(err), Model: res.Model, Fallback: res.Fallback, Citations: res.Citations, Searches: res.Searches, Activity: activity})
+		s.events.Emit(EventChatError, ErrorEvent{ChatID: chatID, MessageID: answerID, Error: friendlyError(err), CutOff: resumable, Model: res.Model, Fallback: res.Fallback, Citations: res.Citations, Searches: res.Searches, Activity: activity})
 		return
 	}
 
 	s.events.Emit(EventChatDone, DoneEvent{
-		ChatID: chatID, MessageID: answerID, Model: res.Model, Fallback: res.Fallback, Stopped: stopped,
+		ChatID: chatID, MessageID: answerID, Model: res.Model, Fallback: res.Fallback, Stopped: stopped, CutOff: resumable,
 		Citations: res.Citations, Searches: res.Searches, Activity: activity,
 	})
 }
@@ -443,6 +444,17 @@ func titleFrom(text string) string {
 		return "New Chat"
 	}
 	return line
+}
+
+// cutOff reports an answer the model can pick up again: it has text and ended
+// early because the user stopped it, it reached the output limit, or the
+// connection dropped. A content filter or provider error isn't worth resuming.
+func cutOff(text string, stopped bool, err error) bool {
+	if strings.TrimSpace(text) == "" {
+		return false
+	}
+	var finish *openrouter.FinishError
+	return stopped || errors.As(err, &finish) && finish.Reason == "length" || errors.Is(err, openrouter.ErrIncomplete)
 }
 
 func friendlyError(err error) string {

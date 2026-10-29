@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -373,6 +374,78 @@ func TestCutOffAnswersKeepTheirTextWithAReason(t *testing.T) {
 		_, msgs, _ := st.GetChat(context.Background(), res.ChatID)
 		if len(msgs) != 2 || msgs[1].Content != "half" || decodeMeta(msgs[1].Meta).Error != want {
 			t.Fatalf("cut-off answer not saved with its reason: %+v", msgs)
+		}
+	}
+}
+
+func TestOnlyAnswersThatStoppedEarlyCanBeContinued(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		text string
+		err  error
+		want bool
+	}{
+		{"output limit", "half", &openrouter.FinishError{Reason: "length"}, true},
+		{"dropped connection", "half", fmt.Errorf("openrouter: %w", openrouter.ErrIncomplete), true},
+		{"content filter", "half", &openrouter.FinishError{Reason: "content_filter"}, false},
+		{"provider error", "half", &openrouter.FinishError{Reason: "error"}, false},
+		{"other failure", "half", errors.New("boom"), false},
+		{"output limit without text", " ", &openrouter.FinishError{Reason: "length"}, false},
+		{"complete", "whole", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			llm := &fakeLLM{chunks: []string{tc.text}, result: openrouter.Result{Text: tc.text}, err: tc.err}
+			svc, rec, _ := newChat(t, llm, "k")
+			res, err := svc.Send(SendRequest{Text: "hi"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got bool
+			event := wait(t, rec)
+			switch ev := event.(type) {
+			case ErrorEvent:
+				got = ev.CutOff
+			case DoneEvent:
+				got = ev.CutOff
+			}
+			if got != tc.want {
+				t.Fatalf("event cutOff %v, want %v", got, tc.want)
+			}
+			detail, err := NewHistoryService(svc.store).Get(res.ChatID)
+			if err != nil || detail.Messages[1].CutOff != tc.want {
+				t.Fatalf("history cutOff: %+v %v", detail.Messages, err)
+			}
+			// The frontend reads these by their JSON names.
+			for _, v := range []any{event, detail.Messages[1]} {
+				if b, _ := json.Marshal(v); strings.Contains(string(b), `"cutOff":true`) != tc.want {
+					t.Fatalf("JSON %s", b)
+				}
+			}
+		})
+	}
+	for _, text := range []string{"half", ""} {
+		started := make(chan struct{})
+		llm := streamFunc(func(ctx context.Context, _ openrouter.Request, delta func(string)) (openrouter.Result, error) {
+			delta(text)
+			close(started)
+			<-ctx.Done()
+			return openrouter.Result{Text: text}, ctx.Err()
+		})
+		svc, rec, _ := newChat(t, &fakeLLM{}, "k")
+		svc.newLLM = func(string) LLM { return llm }
+		res, err := svc.Send(SendRequest{Text: "hi"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-started
+		svc.Stop(res.ChatID)
+		done, ok := wait(t, rec).(DoneEvent)
+		if !ok || !done.Stopped || done.CutOff != (text != "") {
+			t.Fatalf("stopped with %q: %+v", text, done)
+		}
+		detail, err := NewHistoryService(svc.store).Get(res.ChatID)
+		if err != nil || detail.Messages[1].CutOff != (text != "") {
+			t.Fatalf("history after stop with %q: %+v %v", text, detail.Messages, err)
 		}
 	}
 }

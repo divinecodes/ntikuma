@@ -13,6 +13,7 @@ type messageMeta struct {
 	Activity  []toolExecution       `json:"activity,omitempty"`
 	Stopped   bool                  `json:"stopped,omitempty"`
 	Error     string                `json:"error,omitempty"`
+	CutOff    bool                  `json:"cutOff,omitempty"`
 }
 
 // Calls and bounded outputs stay in metadata, for display rather than replay.

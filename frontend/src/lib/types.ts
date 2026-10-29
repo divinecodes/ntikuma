@@ -80,6 +80,7 @@ export interface DoneEvent {
     model: string;
     fallback: boolean;
     stopped: boolean;
+    cutOff?: boolean;
     activity?: ToolActivity[];
     citations?: Citation[];
     searches?: number;
@@ -89,6 +90,7 @@ export interface ErrorEvent {
     chatId: string;
     messageId: string;
     error: string;
+    cutOff?: boolean;
     model?: string;
     fallback?: boolean;
     activity?: ToolActivity[];
@@ -116,6 +118,7 @@ export interface MessageView {
     activity?: ToolActivity[];
     stopped?: boolean;
     error?: string;
+    cutOff?: boolean;
 }
 
 export interface ChatDetail {
@@ -184,6 +187,8 @@ export interface UIMessage {
     streaming?: boolean;
     stopped?: boolean;
     error?: string
+    /** Stopped early with some text, so it can be continued. */
+    cutOff?: boolean;
     citations?: Citation[];
     searches?: number;
     activity?: ToolActivity[];

@@ -39,6 +39,8 @@ type MessageView struct {
 	Activity    []ToolActivity        `json:"activity,omitempty"`
 	Stopped     bool                  `json:"stopped,omitempty"`
 	Error       string                `json:"error,omitempty"`
+	// CutOff marks an answer that stopped early and can be continued.
+	CutOff bool `json:"cutOff,omitempty"`
 }
 
 // finds chats by title or message text. Matched terms in snippets are
@@ -63,7 +65,7 @@ func (h *HistoryService) Get(chatID string) (ChatDetail, error) {
 		v := MessageView{ID: m.ID, Role: m.Role, Content: m.Content, Model: m.Model, Fallback: m.Fallback, CreatedAt: m.CreatedAt}
 		meta := decodeMeta(m.Meta)
 		v.Citations, v.Searches = meta.Citations, meta.Searches
-		v.Activity, v.Stopped, v.Error = activityViews(meta.Activity), meta.Stopped, meta.Error
+		v.Activity, v.Stopped, v.Error, v.CutOff = activityViews(meta.Activity), meta.Stopped, meta.Error, meta.CutOff
 		if m.Attachments != "" {
 			_ = json.Unmarshal([]byte(m.Attachments), &v.Attachments)
 			// The UI only needs labels; keep clipboard and image data in storage.
