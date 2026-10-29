@@ -232,7 +232,12 @@ func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, 
 		}
 	}()
 
-	res, err := s.runTurn(ctx, s.newLLM(key), req, hidden, chatID, answerID, func(d string) {
+	llm := s.newLLM(key)
+	// Sized here rather than in Send, so Send never waits for the catalog.
+	if conversationChars(req.Messages) > smallHistoryChars {
+		req.Messages = trimHistory(req.Messages, historyBudget(ctx, llm, req.Models))
+	}
+	res, err := s.runTurn(ctx, llm, req, hidden, chatID, answerID, func(d string) {
 		bufMu.Lock()
 		buf.WriteString(d)
 		bufMu.Unlock()
@@ -277,7 +282,11 @@ const (
 	maxReplayImages     = 4
 	maxReplayImageBytes = 24 << 20
 	// About 75k tokens: it fits a 128k-context model with room for the answer.
+	// Smaller context windows get a smaller budget; see historyBudget.
 	maxHistoryChars = 300_000
+	// Below this, no model's window is at risk, so the catalog isn't consulted.
+	smallHistoryChars = 16_000
+	charsPerToken     = 4
 )
 
 // noAnswerText stands in for an answer that failed or was stopped before any
@@ -287,8 +296,7 @@ const noAnswerText = "[No answer: this reply failed or was stopped before any te
 
 // buildMessages turns stored history plus the new message into the API format.
 // Text attachments are bounded by maxChars. Screenshots remain image parts for
-// the newest few; older ones become a note. The oldest turns are dropped once
-// the conversation passes maxHistoryChars. The new message is always sent.
+// the newest few; older ones become a note. trimHistory then bounds the text.
 func buildMessages(system string, history []store.Message, text string, atts []Attachment, maxChars int, now time.Time) []openrouter.Message {
 	system = strings.TrimSpace(system)
 	if system != "" {
@@ -327,13 +335,17 @@ func buildMessages(system string, history []store.Message, text string, atts []A
 		}
 		turns[i].Images = kept
 	}
+	return append([]openrouter.Message{{Role: "system", Content: system}}, turns...)
+}
 
-	total := 0
-	for _, m := range turns {
-		total += len(m.Content)
-	}
+// trimHistory drops the oldest turns after the system message once the
+// conversation passes budget characters, and tells the model it did. The new
+// message is always sent.
+func trimHistory(msgs []openrouter.Message, budget int) []openrouter.Message {
+	turns := msgs[1:]
+	total := conversationChars(msgs)
 	first := 0
-	for first < len(turns)-1 && total > maxHistoryChars {
+	for first < len(turns)-1 && total > budget {
 		total -= len(turns[first].Content)
 		first++
 		// Start on a question, so the model never sees a reply to nothing.
@@ -342,10 +354,46 @@ func buildMessages(system string, history []store.Message, text string, atts []A
 			first++
 		}
 	}
-	if first > 0 {
-		system += "\nOlder messages in this chat were left out to keep the request small."
+	if first == 0 {
+		return msgs
 	}
-	return append([]openrouter.Message{{Role: "system", Content: system}}, turns[first:]...)
+	system := msgs[0]
+	system.Content += "\nOlder messages in this chat were left out to keep the request small."
+	return append([]openrouter.Message{system}, turns[first:]...)
+}
+
+func conversationChars(msgs []openrouter.Message) int {
+	total := 0
+	for _, m := range msgs[1:] {
+		total += len(m.Content)
+	}
+	return total
+}
+
+// contextSizer is an LLM that can look up its models' context windows.
+// *openrouter.Client satisfies it.
+type contextSizer interface {
+	ContextLength(ctx context.Context, models []string) (int, error)
+}
+
+var _ contextSizer = (*openrouter.Client)(nil)
+
+// historyBudget is the conversation size, in characters, for these models:
+// half the smallest context window, leaving the rest for the answer, tools and
+// images, and never more than maxHistoryChars. Without a known window it is
+// maxHistoryChars.
+func historyBudget(ctx context.Context, llm LLM, models []string) int {
+	sizer, ok := llm.(contextSizer)
+	if !ok {
+		return maxHistoryChars
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tokens, err := sizer.ContextLength(ctx, models)
+	if err != nil || tokens <= 0 {
+		return maxHistoryChars
+	}
+	return min(maxHistoryChars, tokens*charsPerToken/2)
 }
 
 func withAttachments(text string, atts []Attachment, maxChars int) openrouter.Message {

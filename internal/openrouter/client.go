@@ -546,6 +546,35 @@ func imageModels(models []string, catalog []ModelInfo) []string {
 	return out
 }
 
+// ContextLength is the smallest context window, in tokens, among models, so
+// the request fits whichever one answers. An alias the catalog doesn't list
+// takes the smallest window in its family. Models missing from the catalog, or
+// listed without a size, are skipped; 0 means none was found.
+func (c *Client) ContextLength(ctx context.Context, models []string) (int, error) {
+	catalog, err := c.cachedModels(ctx)
+	if err != nil {
+		return 0, err
+	}
+	smallest := 0
+	for _, id := range models {
+		window := 0
+		alias := strings.HasPrefix(id, "~") || strings.HasSuffix(id, "-latest")
+		for _, m := range catalog {
+			if m.ID == id {
+				window = m.ContextLength
+				break
+			}
+			if alias && SameFamily(id, m.ID) && m.ContextLength > 0 && (window == 0 || m.ContextLength < window) {
+				window = m.ContextLength
+			}
+		}
+		if window > 0 && (smallest == 0 || window < smallest) {
+			smallest = window
+		}
+	}
+	return smallest, nil
+}
+
 // Image requests check the catalog on every model step, and the client is
 // rebuilt for each answer, so successful lookups are shared for a while.
 const catalogTTL = 10 * time.Minute
