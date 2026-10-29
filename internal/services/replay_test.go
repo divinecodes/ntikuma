@@ -1,12 +1,15 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"ntikuma/internal/openrouter"
 	"ntikuma/internal/store"
 )
 
@@ -94,5 +97,48 @@ func TestLongHistoryDropsTheOldestTurnsFirst(t *testing.T) {
 	alone := buildMessages("", history, huge, nil, 0, time.Now())
 	if len(alone) != 2 || alone[1].Content != huge {
 		t.Fatalf("current question dropped: %d messages", len(alone))
+	}
+}
+
+func TestEmptyAnswersAreReplayedAsAPlaceholder(t *testing.T) {
+	history := []store.Message{
+		{Role: "user", Content: "first"}, {Role: "assistant", Content: ""},
+		{Role: "user", Content: "second"}, {Role: "assistant", Content: " \n"},
+		{Role: "user", Content: "third"}, {Role: "assistant", Content: "A real answer"},
+	}
+	messages := buildMessages("", history, "fourth", nil, 20000, time.Now())
+	roles := ""
+	for _, m := range messages[1:] {
+		roles += m.Role[:1]
+		if strings.TrimSpace(m.Content) == "" {
+			t.Fatalf("empty %s message replayed", m.Role)
+		}
+	}
+	if roles != "uauauau" || messages[2].Content != noAnswerText || messages[4].Content != noAnswerText || messages[6].Content != "A real answer" {
+		t.Fatalf("roles %s: %+v", roles, messages)
+	}
+}
+
+func TestAFailedAnswerDoesNotBreakTheNextQuestion(t *testing.T) {
+	llm := &fakeLLM{err: errors.New("out of credits")}
+	svc, rec, st := newChat(t, llm, "k")
+	res, err := svc.Send(SendRequest{Text: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait(t, rec)
+	_, stored, _ := st.GetChat(context.Background(), res.ChatID)
+	if len(stored) != 2 || stored[1].Role != "assistant" || stored[1].Content != "" {
+		t.Fatalf("expected the failed answer stored empty: %+v", stored)
+	}
+	llm.err, llm.result = nil, openrouter.Result{Text: "ok"}
+	if _, err := svc.Send(SendRequest{ChatID: res.ChatID, Text: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	wait(t, rec)
+	for _, m := range llm.got.Messages {
+		if strings.TrimSpace(m.Content) == "" {
+			t.Fatalf("empty %s message sent: %+v", m.Role, llm.got.Messages)
+		}
 	}
 }

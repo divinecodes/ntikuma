@@ -275,6 +275,11 @@ const (
 	maxHistoryChars = 300_000
 )
 
+// noAnswerText stands in for an answer that failed or was stopped before any
+// text arrived. Anthropic rejects empty text blocks, and dropping the turn would
+// merge the unanswered question into the next one.
+const noAnswerText = "[No answer: this reply failed or was stopped before any text arrived.]"
+
 // buildMessages turns stored history plus the new message into the API format.
 // Text attachments are bounded by maxChars. Screenshots remain image parts for
 // the newest few; older ones become a note. The oldest turns are dropped once
@@ -289,6 +294,9 @@ func buildMessages(system string, history []store.Message, text string, atts []A
 	var turns []openrouter.Message
 	for _, m := range history {
 		msg := openrouter.Message{Role: m.Role, Content: m.Content}
+		if m.Role == "assistant" && strings.TrimSpace(m.Content) == "" {
+			msg.Content = noAnswerText
+		}
 		if m.Role == "user" && m.Attachments != "" {
 			var prev []Attachment
 			if json.Unmarshal([]byte(m.Attachments), &prev) == nil {
