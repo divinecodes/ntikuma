@@ -28,7 +28,7 @@ func TestPreferencesPersistAllFieldsWithoutAPIKey(t *testing.T) {
 		AttachClipboard: false, AttachSelection: true, OfferScreenshot: false,
 		MaxContextChars: 5000, KeepChatsDays: 90, UsePortalShortcuts: true,
 		WebSearch:  config.WebSearch{MaxResults: 4, MaxFetches: 2, MaxToolCalls: 5},
-		LocalTools: true, ToolRoots: []string{"~/Documents", "/my/code"}, AllowShellCommands: true,
+		LocalTools: true, ToolRoots: []string{"~/Documents", "/my/code"}, AllowHiddenFiles: true, AllowShellCommands: true,
 		Voice: config.Voice{
 			Engine: "whisper-server", WhisperURL: "http://127.0.0.1:9000",
 			WhisperServerBin: "/opt/whisper-server", WhisperModelPath: "/opt/model.bin", Language: "auto",

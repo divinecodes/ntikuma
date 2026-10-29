@@ -8,7 +8,7 @@ Sending a question sends its text, previous user/assistant messages in that chat
 
 Web search is enabled by default. Turn off the Web pill, or press Ctrl+G, for a question without web tools. With Web enabled, OpenRouter's search/fetch services may process the question and conversation context. Sources and reported search counts are saved with the answer.
 
-Enabling Local tools allows the model to list and read files in your configured folders. File contents, names and paths returned by tools go to the chat model. File tools refuse hidden files and key or credential files. After a local tool runs, the rest of that answer can't fetch web pages. Approved shell commands run with your account's permissions; their output also goes to the model. Folder restrictions apply to file tools, and do not restrict approved shell commands.
+Enabling Local tools allows the model to list and read files in your configured folders. File contents, names and paths returned by tools go to the chat model. File tools refuse hidden files unless you turn on Read hidden files in Preferences, and always refuse key and credential files such as SSH keys, `.env` files and `.aws/credentials`. This name-based check can miss a secret stored under an ordinary file name. After a local tool runs, the rest of that answer can't fetch web pages. Approved shell commands run with your account's permissions; their output also goes to the model. Folder restrictions apply to file tools, and do not restrict approved shell commands.
 
 OpenRouter and its providers have their own processing and retention policies. Ntikuma does not enforce zero-retention settings or delete provider-held data when you delete local history.
 

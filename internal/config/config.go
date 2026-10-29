@@ -31,6 +31,7 @@ type Settings struct {
 	WebSearch          WebSearch `json:"webSearch"`
 	LocalTools         bool      `json:"localTools"`
 	ToolRoots          []string  `json:"toolRoots"`
+	AllowHiddenFiles   bool      `json:"allowHiddenFiles"`
 	AllowShellCommands bool      `json:"allowShellCommands"`
 
 	// keep chat days. delete chats older than this many days. 0 keeps the chats forever

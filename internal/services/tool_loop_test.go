@@ -567,3 +567,53 @@ func TestWebFetchStaysWithoutLocalToolsOrALocalCall(t *testing.T) {
 		t.Fatal("web fetch guidance without local tools")
 	}
 }
+
+func TestHiddenFilesFollowTheSettingFromTheStartOfAnAnswer(t *testing.T) {
+	for _, mode := range []string{"on", "off", "turned-on-during", "turned-off-during"} {
+		t.Run(mode, func(t *testing.T) {
+			svc, rec, _ := newChat(t, &fakeLLM{}, "key")
+			root := t.TempDir()
+			enableFileTools(t, svc, root)
+			path := filepath.Join(root, ".bashrc")
+			if err := os.WriteFile(path, []byte("alias ll='ls -l'"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			atStart := mode == "on" || mode == "turned-off-during"
+			settings := svc.cfg.Get()
+			settings.AllowHiddenFiles = atStart
+			if err := svc.cfg.Save(settings); err != nil {
+				t.Fatal(err)
+			}
+			svc.events = toolHook{Emitter: rec, hook: func(event ToolEvent) {
+				if event.Activity.CallID == "list" && event.Activity.Status == "finished" && strings.HasPrefix(mode, "turned") {
+					settings := svc.cfg.Get()
+					settings.AllowHiddenFiles = !atStart
+					if err := svc.cfg.Save(settings); err != nil {
+						t.Error(err)
+					}
+				}
+			}}
+			requests := useScript(svc, func(step int, _ context.Context, _ openrouter.Request, _ func(string)) (openrouter.Result, error) {
+				if step == 0 {
+					return openrouter.Result{FinishReason: "tool_calls", ToolCalls: []openrouter.ToolCall{fileCall("list", "list_directory", root), fileCall("read", "read_file", path)}}, nil
+				}
+				return openrouter.Result{Text: "Done."}, nil
+			})
+			if _, err := svc.Send(SendRequest{Text: "List then read"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := wait(t, rec).(DoneEvent); !ok {
+				t.Fatal("answer did not finish")
+			}
+			system := (*requests)[0].Messages[0].Content
+			if strings.Contains(system, "Hidden files and key or credential files are refused.") == atStart || !strings.Contains(system, "ey or credential files are refused") {
+				t.Fatalf("system prompt: %q", system)
+			}
+			req := (*requests)[1]
+			output := req.Messages[len(req.Messages)-1].Content
+			if want := mode == "on"; (output == "alias ll='ls -l'") != want {
+				t.Fatalf("read with hidden files %s: %q", mode, output)
+			}
+		})
+	}
+}

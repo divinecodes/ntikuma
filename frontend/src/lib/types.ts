@@ -161,6 +161,7 @@ export interface Settings {
     webSearch: { maxResults: number; maxFetches: number; maxToolCalls: number };
     localTools: boolean;
     toolRoots: string[];
+    allowHiddenFiles: boolean;
     allowShellCommands: boolean;
     keepChatsDays: number;
     usePortalShortcuts: boolean;

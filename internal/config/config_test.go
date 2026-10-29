@@ -195,7 +195,7 @@ func TestCohereSettingsNormalizeAndValidateLanguage(t *testing.T) {
 
 func TestLocalToolsDefaultsMigrationAndEmptyRootsStayDisabled(t *testing.T) {
 	defaults := Defaults()
-	if defaults.LocalTools || defaults.AllowShellCommands || !reflect.DeepEqual(defaults.ToolRoots, []string{"~/Documents", "~/codes"}) {
+	if defaults.LocalTools || defaults.AllowShellCommands || defaults.AllowHiddenFiles || !reflect.DeepEqual(defaults.ToolRoots, []string{"~/Documents", "~/codes"}) {
 		t.Fatal(defaults)
 	}
 	for _, document := range []string{`{"systemPrompt":"legacy"}`, `{"toolRoots":[]}`, `{"toolRoots":null}`} {

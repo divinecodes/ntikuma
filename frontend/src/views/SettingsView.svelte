@@ -166,6 +166,10 @@
           <Switch checked={s.localTools} label="Enable local tools" onchange={(v) => { s.localTools = v; prefs.toolSettingsChanged(); }} />
         </div>
         <div class="row">
+          <div class="text"><span>Read hidden files</span><small>Lets file tools read dotfiles such as .bashrc and .config. Key and credential files, such as .env, .ssh and .aws/credentials, stay refused.</small></div>
+          <Switch checked={s.allowHiddenFiles} label="Read hidden files" onchange={(v) => { s.allowHiddenFiles = v; prefs.toolSettingsChanged(); }} />
+        </div>
+        <div class="row">
           <div class="text"><span>Allow shell commands</span><small>Requires local tools. Ask before every command. Commands run as your user and can access files outside the tool folders.</small></div>
           <Switch checked={s.allowShellCommands} label="Allow shell commands" onchange={(v) => { s.allowShellCommands = v; prefs.toolSettingsChanged(); }} />
         </div>
