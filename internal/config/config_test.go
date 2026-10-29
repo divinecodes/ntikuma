@@ -255,3 +255,21 @@ func TestLocalToolRootsAreCopiedAndPersistWithMissingFolders(t *testing.T) {
 		}
 	}
 }
+
+func TestContextCaptureAndLocalToolsStartOff(t *testing.T) {
+	s := Defaults()
+	if s.AttachClipboard || s.AttachSelection || s.LocalTools || s.AllowShellCommands {
+		t.Fatalf("defaults capture or run something before the user opts in: %+v", s)
+	}
+	dir := t.TempDir()
+	for raw, want := range map[string]bool{`{"systemPrompt":"Keep this"}`: false, `{"attachClipboard":true}`: true} {
+		path := filepath.Join(dir, "config.json")
+		if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+		m, err := Load(path)
+		if err != nil || m.Get().AttachClipboard != want {
+			t.Fatalf("%s: attachClipboard %v, err %v", raw, m.Get().AttachClipboard, err)
+		}
+	}
+}

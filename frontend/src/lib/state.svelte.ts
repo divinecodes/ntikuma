@@ -23,11 +23,12 @@ class AppState {
     //Composedr
     input = $state("");
     attachments = $state<Attachment[]>([]);
-    autoAttach = $state(true);
+    autoAttach = $state(false);
     screenshotPending = $state(false);
     selectionSupport = $state<SelectionSupport | null>(null);
     selectionPending = $state(false);
     selectionMessage = $state("");
+    clipboardMessage = $state("");
     modelOverride = $state("");
     web = $state(true);
     //bumped whenever the focused view should focus its main input
@@ -147,6 +148,7 @@ class AppState {
         if (!this.autoAttach) {
             this.clipboardVersion++;
             this.captureOnFocus = false;
+            this.clipboardMessage = "";
             this.attachments = this.attachments.filter((a) => a.kind !== "clipboard");
         }
     }
@@ -287,6 +289,7 @@ class AppState {
         this.answerWeb = false;
         this.input = "";
         this.attachments = [];
+        this.clipboardMessage = "";
         this.modelOverride = "";
     }
 
@@ -342,13 +345,20 @@ class AppState {
     }
 
     // ---- Context ----
-    async captureClipboard() {
+    // Automatic captures hold back secret-looking text (see AutoClipboard in
+    // context.go). A manual capture is the user asking, so it always attaches.
+    async captureClipboard(manual = false) {
+        if (manual) this.dismissedClipboard = false;
         if (this.dismissedClipboard || this.attachments.some((a) => a.kind === "clipboard")) return;
         const version = ++this.clipboardVersion;
+        this.clipboardMessage = "";
         try {
-            const a = await contextApi.clipboard();
+            const { attachment, message } = manual
+                ? { attachment: await contextApi.clipboard(), message: "" }
+                : await contextApi.autoClipboard();
             if (version !== this.clipboardVersion || this.dismissedClipboard) return;
-            if(a) this.attachments.push(a);
+            if (attachment) this.attachments.push(attachment);
+            this.clipboardMessage = message;
         } catch(e) {
             if (version === this.clipboardVersion) this.error = errorText(e);
         }
@@ -423,6 +433,7 @@ class AppState {
         this.clipboardVersion++;
         this.autoAttach = !this.autoAttach;
         if(!this.autoAttach){
+            this.clipboardMessage = "";
             this.attachments = this.attachments.filter((a) => a.kind !== "clipboard");
         } else {
             this.dismissedClipboard = false;
@@ -452,6 +463,7 @@ class AppState {
         this.messages.push({id: `local-${Date.now()}`, role: "user", content: text, attachments: attachments });
         this.input = "";
         this.attachments = [];
+        this.clipboardMessage = "";
         this.view = "chat";
         this.streaming = true;
         this.pendingSend = true;

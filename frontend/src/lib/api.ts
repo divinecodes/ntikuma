@@ -4,6 +4,7 @@
 import { Call, Events } from "@wailsio/runtime"
 import type {
     Attachment,
+    ClipboardCapture,
     ApprovalEvent,
     ChatDetail,
     Chat,
@@ -61,6 +62,7 @@ export const voiceApi = {
 
 export const contextApi = {
     clipboard: () => call<Attachment | null>(`${services}.ContextService.Clipboard`),
+    autoClipboard: () => call<ClipboardCapture>(`${services}.ContextService.AutoClipboard`),
     screenshot: () => call<Attachment | null>(`${services}.ContextService.Screenshot`),
     cancelScreenshot: () => call<void>(`${services}.ContextService.CancelScreenshot`),
     selectionStatus: () => call<SelectionSupport>(`${services}.ContextService.SelectionStatus`),

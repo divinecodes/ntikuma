@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -112,7 +113,7 @@ func TestToolLoopStreamsReplaysAndSavesActivity(t *testing.T) {
 		t.Fatalf("deltas: %q", rec.text.String())
 	}
 	second := (*requests)[1]
-	if second.SessionID != res.ChatID || !second.NonStreaming || len(second.Tools) != 4 || len(second.Messages[1].Images) != 1 {
+	if second.SessionID != res.ChatID || !second.NonStreaming || len(second.Tools) != 3 || len(second.Messages[1].Images) != 1 {
 		t.Fatalf("continuation lost request options: %+v", second)
 	}
 	ask, reply := second.Messages[len(second.Messages)-2], second.Messages[len(second.Messages)-1]
@@ -498,5 +499,71 @@ func TestToolSummariesAreBoundedSingleLineText(t *testing.T) {
 		if strings.ContainsAny(summary, "\n\r") || len(summary) > 200 || !utf8.ValidString(summary) {
 			t.Fatalf("unsafe summary: %q", summary)
 		}
+	}
+}
+
+func toolTypes(tools []openrouter.Tool) []string {
+	var types []string
+	for _, tool := range tools {
+		if tool.Function != nil {
+			types = append(types, tool.Function.Name)
+		} else {
+			types = append(types, tool.Type)
+		}
+	}
+	slices.Sort(types)
+	return types
+}
+
+func TestWebFetchIsWithdrawnOnceALocalToolRuns(t *testing.T) {
+	for _, path := range []string{"todo.md", "missing.md"} {
+		t.Run(path, func(t *testing.T) {
+			svc, rec, _ := newChat(t, &fakeLLM{}, "key")
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "todo.md"), []byte("PRIVATE_TOOL_TEXT"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			enableFileTools(t, svc, root)
+			requests := useScript(svc, func(step int, _ context.Context, _ openrouter.Request, _ func(string)) (openrouter.Result, error) {
+				if step < 2 {
+					// A failed read still counts: its error text can reveal what exists.
+					return openrouter.Result{FinishReason: "tool_calls", ToolCalls: []openrouter.ToolCall{fileCall(fmt.Sprint("read-", step), "read_file", filepath.Join(root, path))}}, nil
+				}
+				return openrouter.Result{Text: "Done."}, nil
+			})
+			if _, err := svc.Send(SendRequest{Text: "Read my todo", Web: true}); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := wait(t, rec).(DoneEvent); !ok || len(*requests) != 3 {
+				t.Fatalf("requests: %d", len(*requests))
+			}
+			all := []string{"list_directory", "openrouter:web_fetch", "openrouter:web_search", "read_file"}
+			withoutFetch := []string{"list_directory", "openrouter:web_search", "read_file"}
+			for step, want := range [][]string{all, withoutFetch, withoutFetch} {
+				if got := toolTypes((*requests)[step].Tools); !slices.Equal(got, want) {
+					t.Fatalf("step %d tools: %v", step, got)
+				}
+			}
+			if !strings.Contains((*requests)[0].Messages[0].Content, "Web page fetching stops for the rest of an answer once a local tool has run") {
+				t.Fatal("missing web fetch guidance")
+			}
+		})
+	}
+}
+
+func TestWebFetchStaysWithoutLocalToolsOrALocalCall(t *testing.T) {
+	svc, rec, _ := newChat(t, &fakeLLM{}, "key")
+	requests := useScript(svc, func(int, context.Context, openrouter.Request, func(string)) (openrouter.Result, error) {
+		return openrouter.Result{Text: "Answer"}, nil
+	})
+	if _, err := svc.Send(SendRequest{Text: "Search", Web: true}); err != nil {
+		t.Fatal(err)
+	}
+	wait(t, rec)
+	if got := toolTypes((*requests)[0].Tools); !slices.Equal(got, []string{"openrouter:web_fetch", "openrouter:web_search"}) {
+		t.Fatalf("tools: %v", got)
+	}
+	if strings.Contains((*requests)[0].Messages[0].Content, "Web page fetching stops") {
+		t.Fatal("web fetch guidance without local tools")
 	}
 }

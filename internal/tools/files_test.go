@@ -207,3 +207,91 @@ func TestConcurrentDirectorySymlinkReplacementNeverEscapes(t *testing.T) {
 		}
 	}
 }
+
+func TestFileToolsRefuseHiddenAndKeyFiles(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "notes.md"), []byte("public notes"))
+	for _, dir := range []string{".ssh", ".git", "project"} {
+		if err := os.Mkdir(filepath.Join(root, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	private := []string{".env", ".ssh/id_ed25519", ".git/config", "project/.env", "server.pem", "tls.KEY", "prod.env", "id_rsa", "vault.kdbx"}
+	for _, name := range private {
+		writeFile(t, filepath.Join(root, name), []byte("MUST NEVER RETURN THIS"))
+	}
+	// A visible name must not reach a hidden file through a symlink.
+	if err := os.Symlink(".env", filepath.Join(root, "settings.txt")); err != nil {
+		t.Fatal(err)
+	}
+	registry := fileRegistry(t, root)
+	for _, name := range append(private, "settings.txt") {
+		output := runPath(registry, "read_file", filepath.Join(root, name))
+		if !strings.Contains(output, "hidden") || strings.Contains(output, "MUST NEVER RETURN THIS") {
+			t.Fatalf("read %s: %q", name, output)
+		}
+	}
+	for _, dir := range []string{".ssh", ".git"} {
+		if output := runPath(registry, "list_directory", filepath.Join(root, dir)); !strings.Contains(output, "hidden") || strings.Contains(output, "id_ed25519") {
+			t.Fatalf("listed %s: %q", dir, output)
+		}
+	}
+	if output := runPath(registry, "read_file", filepath.Join(root, "notes.md")); output != "public notes" {
+		t.Fatal(output)
+	}
+	listing := runPath(registry, "list_directory", root)
+	for _, name := range []string{`".env"`, `".ssh"`, `".git"`, `"server.pem"`, `"tls.KEY"`, `"prod.env"`, `"id_rsa"`, `"vault.kdbx"`} {
+		if strings.Contains(listing, name) {
+			t.Fatalf("listing shows %s: %s", name, listing)
+		}
+	}
+	for _, expected := range []string{`"notes.md"`, `"project"`, `"settings.txt"`, "[8 hidden or key files not shown]"} {
+		if !strings.Contains(listing, expected) {
+			t.Fatalf("listing missing %s: %s", expected, listing)
+		}
+	}
+}
+
+func TestFileToolsAllowAToolFolderInsideAHiddenDirectory(t *testing.T) {
+	home := t.TempDir()
+	config := filepath.Join(home, ".config", "app")
+	if err := os.MkdirAll(config, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(config, "settings.toml"), []byte("theme = 'dark'"))
+	writeFile(t, filepath.Join(config, ".token"), []byte("MUST NEVER RETURN THIS"))
+	// The broader root sees .config as hidden; the explicit hidden root allows it.
+	registry := fileRegistry(t, home, config)
+	if output := runPath(registry, "read_file", filepath.Join(config, "settings.toml")); output != "theme = 'dark'" {
+		t.Fatal(output)
+	}
+	if output := runPath(registry, "list_directory", config); !strings.Contains(output, `"settings.toml"`) || strings.Contains(output, `".token"`) {
+		t.Fatal(output)
+	}
+	if output := runPath(registry, "read_file", filepath.Join(config, ".token")); !strings.Contains(output, "hidden") {
+		t.Fatal(output)
+	}
+	if output := runPath(fileRegistry(t, home), "read_file", filepath.Join(config, "settings.toml")); !strings.Contains(output, "hidden") {
+		t.Fatal(output)
+	}
+}
+
+func TestDirectoryListingFillsPastHiddenEntries(t *testing.T) {
+	root := t.TempDir()
+	// Visible files sit between two runs of hidden ones, so reading only the
+	// first 257 entries misses them in creation, reverse or hashed order.
+	hidden := func(from int) {
+		for i := range MaxDirectoryEntries + 50 {
+			writeFile(t, filepath.Join(root, fmt.Sprintf(".hidden-%03d", from+i)), []byte("x"))
+		}
+	}
+	hidden(0)
+	for i := range 10 {
+		writeFile(t, filepath.Join(root, fmt.Sprintf("file-%02d", i)), []byte("x"))
+	}
+	hidden(MaxDirectoryEntries + 50)
+	listing := runPath(fileRegistry(t, root), "list_directory", root)
+	if strings.Count(listing, `"file-`) != 10 || strings.Contains(listing, ".hidden-") || strings.Contains(listing, "truncated") || !strings.Contains(listing, "[612 hidden or key files not shown]") {
+		t.Fatal(listing)
+	}
+}

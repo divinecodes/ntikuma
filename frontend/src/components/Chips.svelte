@@ -23,7 +23,7 @@
         <span class="empty">No new context attached.</span>
     {/if}
     {#if !hasClipboard}
-        <button type="button" class="add" onclick={() => app.captureClipboard()}>
+        <button type="button" class="add" onclick={() => app.captureClipboard(true)}>
             <Icon name="plus" size={13} stroke={2} />Clipboard
         </button>
     {/if}
@@ -49,13 +49,16 @@
             <span class="track" class:on={app.autoAttach}><span class="knob"></span></span>
         </button>
     {/if}
+    {#if app.clipboardMessage && !hasClipboard}
+        <span class="note" role="status">{app.clipboardMessage}</span>
+    {/if}
     {#if app.settings?.attachSelection && (app.selectionMessage || app.selectionSupport?.available === false)}
-        <span class="selection-note" role="status">{app.selectionMessage || app.selectionSupport?.message}</span>
+        <span class="note" role="status">{app.selectionMessage || app.selectionSupport?.message}</span>
     {/if}
 </div>
 
 <style>
-    .selection-note {
+    .note {
         flex-basis: 100%;
         color: var(--dim);
         font-size: 12px;

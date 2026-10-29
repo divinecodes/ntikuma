@@ -19,7 +19,9 @@ registerHooks({
                 const h = globalThis.chatHarness;
                 export const chatApi = { send: (...args) => h.send(...args), stop: (id) => h.stops.push(id), approve: (...args) => h.approve(...args) };
                 export const contextApi = {
-                    clipboard: () => h.clipboard(), screenshot: () => h.screenshot(), cancelScreenshot: async () => { h.screenshotCancels++; },
+                    clipboard: () => h.clipboard(),
+                    autoClipboard: () => h.autoClipboard ? h.autoClipboard() : Promise.resolve(h.clipboard()).then((attachment) => ({ attachment, message: "" })),
+                    screenshot: () => h.screenshot(), cancelScreenshot: async () => { h.screenshotCancels++; },
                     selectionStatus: () => h.selectionStatus(), selection: () => h.selection(),
                 };
                 export const historyApi = { recent: async () => h.recent, get: async (id) => h.detail(id) };
@@ -51,6 +53,7 @@ async function fresh() {
     h.selectionStatus = async () => ({ available: true, beforeFocus: false, message: "Reads after focus" });
     h.selection = async () => ({ attachment: null, message: "No selected text" });
     h.clipboard = async () => ({ kind: "clipboard", label: "Clipboard", content: "copied" });
+    h.autoClipboard = null;
     const { app } = await import(`../src/lib/state.svelte.ts?test=${instance++}`);
     await app.init();
     return app;
@@ -207,6 +210,47 @@ test("turning auto-attach off invalidates a pending clipboard read", async () =>
     finish({ kind: "clipboard", label: "Clipboard", content: "copied" });
     await capture;
     assert.equal(app.attachments.length, 0);
+});
+
+test("auto-attach holds back a secret-looking clipboard; the Clipboard button still attaches it", async () => {
+    const app = await fresh();
+    h.autoClipboard = async () => ({ attachment: null, message: "The clipboard looks like a password or key" });
+    h.handlers.focus();
+    h.handlers.open({ mode: "bar" });
+    await settle();
+    assert.equal(app.attachments.length, 0);
+    assert.match(app.clipboardMessage, /looks like a password/);
+    await app.captureClipboard(true);
+    assert.deepEqual(app.attachments.map((a) => a.content), ["copied"]);
+    assert.equal(app.clipboardMessage, "");
+});
+
+test("the Clipboard button attaches again after its chip was removed", async () => {
+    const app = await fresh();
+    h.handlers.focus();
+    h.handlers.open({ mode: "bar" });
+    await settle();
+    app.removeAttachment(0);
+    await app.captureClipboard(true);
+    assert.equal(app.attachments.length, 1);
+});
+
+test("a held-back clipboard message is dropped when stale or on a new chat", async () => {
+    const app = await fresh();
+    let finish;
+    h.autoClipboard = () => new Promise((resolve) => { finish = resolve; });
+    const capture = app.captureClipboard();
+    app.toggleAutoAttach();
+    finish({ attachment: null, message: "held back" });
+    await capture;
+    assert.equal(app.clipboardMessage, "");
+    app.toggleAutoAttach();
+    finish({ attachment: null, message: "held back" });
+    await settle();
+    assert.equal(app.clipboardMessage, "held back");
+    // Reopening resets the chat before focus allows a new clipboard read.
+    h.handlers.open({ mode: "bar" });
+    assert.equal(app.clipboardMessage, "");
 });
 
 test("opening before native focus waits to read the clipboard", async () => {

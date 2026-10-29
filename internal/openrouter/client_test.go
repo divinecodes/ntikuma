@@ -279,3 +279,101 @@ func TestImageModelAliasesAndMetadata(t *testing.T) {
 		t.Fatalf("models: %+v, %v", models, err)
 	}
 }
+
+func streamFrom(t *testing.T, write func(http.ResponseWriter)) (Result, error) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { write(w) }))
+	defer srv.Close()
+	c := New("k")
+	c.BaseURL = srv.URL
+	return c.Stream(context.Background(), Request{Models: []string{"a/b"}}, nil)
+}
+
+func TestStreamClosedBeforeItFinishedIsIncomplete(t *testing.T) {
+	res, err := streamFrom(t, func(w http.ResponseWriter) {
+		sse(w, `data: {"model":"a/b","choices":[{"index":0,"delta":{"content":"The first half of"}}]}`)
+	})
+	if !errors.Is(err, ErrIncomplete) || res.Text != "The first half of" {
+		t.Fatalf("res %+v err %v", res, err)
+	}
+	// Either end signal on its own is enough: a finish reason or the end marker.
+	for name, lines := range map[string][]string{
+		"finish reason, no end marker": {`data: {"choices":[{"index":0,"delta":{"content":"Done."},"finish_reason":"stop"}]}`},
+		"end marker, no finish reason": {`data: {"choices":[{"index":0,"delta":{"content":"Done."}}]}`, "data: [DONE]"},
+	} {
+		if res, err := streamFrom(t, func(w http.ResponseWriter) { sse(w, lines...) }); err != nil || res.Text != "Done." {
+			t.Fatalf("%s: res %+v err %v", name, res, err)
+		}
+	}
+}
+
+func TestEarlyFinishReasonsAreErrorsThatKeepTheText(t *testing.T) {
+	for _, reason := range []string{"length", "content_filter", "error"} {
+		for _, transport := range []string{"sse", "json"} {
+			res, err := streamFrom(t, func(w http.ResponseWriter) {
+				if transport == "json" {
+					w.Header().Set("Content-Type", "application/json")
+					fmt.Fprintf(w, `{"model":"a/b","choices":[{"index":0,"message":{"content":"cut by"},"finish_reason":%q}]}`, reason)
+					return
+				}
+				sse(w, fmt.Sprintf(`data: {"model":"a/b","choices":[{"index":0,"delta":{"content":"cut by"},"finish_reason":%q}]}`, reason), "data: [DONE]")
+			})
+			var finish *FinishError
+			if !errors.As(err, &finish) || finish.Reason != reason || res.Text != "cut by" || res.FinishReason != reason {
+				t.Fatalf("%s/%s: res %+v err %v", reason, transport, res, err)
+			}
+		}
+	}
+	for _, reason := range []string{"stop", "end_turn"} {
+		res, err := streamFrom(t, func(w http.ResponseWriter) {
+			sse(w, fmt.Sprintf(`data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":%q}]}`, reason), "data: [DONE]")
+		})
+		if err != nil || res.Text != "ok" {
+			t.Fatalf("%s: res %+v err %v", reason, res, err)
+		}
+	}
+}
+
+func TestImageRequestsReuseTheModelCatalog(t *testing.T) {
+	catalogs, fail := 0, true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			catalogs++
+			if fail {
+				// A failed lookup must not be remembered.
+				fail = false
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			fmt.Fprint(w, `{"data":[{"id":"vendor/vision","architecture":{"input_modalities":["text","image"]}}]}`)
+		default:
+			sse(w, `data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}`, "data: [DONE]")
+		}
+	}))
+	defer srv.Close()
+	req := Request{Models: []string{"vendor/vision"}, Messages: []Message{{Role: "user", Content: "What is this?", Images: []string{"data:image/png;base64,aW1hZ2U="}}}}
+	stream := func() error {
+		c := New("key") // A new client per answer, as ChatService makes.
+		c.BaseURL = srv.URL
+		_, err := c.Stream(context.Background(), req, nil)
+		return err
+	}
+	if err := stream(); err == nil {
+		t.Fatal("catalog failure ignored")
+	}
+	for range 3 {
+		if err := stream(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if catalogs != 2 {
+		t.Fatalf("fetched the catalog %d times, want 2", catalogs)
+	}
+	// Settings still lists the live catalog.
+	c := New("key")
+	c.BaseURL = srv.URL
+	if _, err := c.Models(context.Background()); err != nil || catalogs != 3 {
+		t.Fatalf("Models: %v, %d fetches", err, catalogs)
+	}
+}

@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -103,10 +104,15 @@ type Tool struct {
 	Function   *Function      `json:"function,omitempty"`
 }
 
+const (
+	WebSearchType = "openrouter:web_search"
+	WebFetchType  = "openrouter:web_fetch"
+)
+
 func WebTools(maxResults, maxFetches int) []Tool {
 	return []Tool{
-		{Type: "openrouter:web_search", Parameters: map[string]any{"max_results": maxResults}},
-		{Type: "openrouter:web_fetch", Parameters: map[string]any{"max_uses": maxFetches}},
+		{Type: WebSearchType, Parameters: map[string]any{"max_results": maxResults}},
+		{Type: WebFetchType, Parameters: map[string]any{"max_uses": maxFetches}},
 	}
 }
 
@@ -125,6 +131,34 @@ type Result struct {
 	ToolCalls        []ToolCall // Only exposed after a successful, complete tool-call response.
 	Reasoning        string
 	ReasoningDetails []json.RawMessage // Opaque continuation state; never answer text.
+}
+
+// ErrIncomplete reports a stream that closed with neither a finish reason nor
+// the [DONE] marker, so the text it returned is only part of the answer.
+var ErrIncomplete = errors.New("the connection closed before the answer finished")
+
+// FinishError reports an answer the provider ended early. OpenRouter
+// normalizes finish_reason to tool_calls, stop, length, content_filter or
+// error; the last three mean the text is cut short. Other values pass.
+type FinishError struct{ Reason string }
+
+func (e *FinishError) Error() string {
+	switch e.Reason {
+	case "length":
+		return "the answer reached the model's output limit and was cut off"
+	case "content_filter":
+		return "the provider's content filter stopped the answer"
+	default:
+		return "the provider stopped the answer with an error"
+	}
+}
+
+func finishError(reason string) error {
+	switch reason {
+	case "length", "content_filter", "error":
+		return &FinishError{Reason: reason}
+	}
+	return nil
 }
 
 type APIError struct {
@@ -237,6 +271,9 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 		if err == nil {
 			res.ToolCalls, err = calls.finish(res.FinishReason)
 		}
+		if err == nil {
+			err = finishError(res.FinishReason)
+		}
 	}()
 
 	models := req.Models
@@ -244,7 +281,7 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 		// Never silently drop an image to satisfy a text-only fallback. Check
 		// the current catalog because model capabilities and aliases change.
 		catalogCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		catalog, err := c.Models(catalogCtx)
+		catalog, err := c.cachedModels(catalogCtx)
 		cancel()
 		if err != nil {
 			return Result{}, fmt.Errorf("couldn't check image support; try again: %w", err)
@@ -452,6 +489,11 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 	if !complete && (len(calls.calls) > 0 || res.FinishReason == "tool_calls") {
 		return res, fmt.Errorf("openrouter: incomplete tool-call stream: %w", io.ErrUnexpectedEOF)
 	}
+	// A finish reason is enough to call the answer whole; some proxies drop the
+	// end marker. With neither, the connection closed mid-answer.
+	if !complete && res.FinishReason == "" {
+		return res, fmt.Errorf("openrouter: %w", ErrIncomplete)
+	}
 	return res, nil
 }
 
@@ -502,6 +544,41 @@ func imageModels(models []string, catalog []ModelInfo) []string {
 		}
 	}
 	return out
+}
+
+// Image requests check the catalog on every model step, and the client is
+// rebuilt for each answer, so successful lookups are shared for a while.
+const catalogTTL = 10 * time.Minute
+
+var catalogCache struct {
+	sync.Mutex
+	entries map[string]cachedCatalog
+}
+
+type cachedCatalog struct {
+	models  []ModelInfo
+	fetched time.Time
+}
+
+func (c *Client) cachedModels(ctx context.Context) ([]ModelInfo, error) {
+	key := strings.TrimRight(c.BaseURL, "/")
+	catalogCache.Lock()
+	entry, ok := catalogCache.entries[key]
+	catalogCache.Unlock()
+	if ok && time.Since(entry.fetched) < catalogTTL {
+		return entry.models, nil
+	}
+	models, err := c.Models(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catalogCache.Lock()
+	if catalogCache.entries == nil {
+		catalogCache.entries = make(map[string]cachedCatalog)
+	}
+	catalogCache.entries[key] = cachedCatalog{models: models, fetched: time.Now()}
+	catalogCache.Unlock()
+	return models, nil
 }
 
 // Models lists the models OpenRouter currently offers. No key is needed.

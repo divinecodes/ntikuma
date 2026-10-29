@@ -25,16 +25,25 @@ type Image struct {
 	Height  int
 }
 
-func encode(data []byte) (Image, error) {
+// inspect checks the size limits and format without decoding the pixels.
+func inspect(data []byte) (image.Config, string, error) {
 	if len(data) > MaxBytes {
-		return Image{}, errors.New("screenshot exceeds 10 MiB; capture a smaller area")
+		return image.Config{}, "", errors.New("screenshot exceeds 10 MiB; capture a smaller area")
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || (format != "png" && format != "jpeg") {
-		return Image{}, errors.New("screenshot must be a PNG or JPEG image")
+		return image.Config{}, "", errors.New("screenshot must be a PNG or JPEG image")
 	}
 	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > maxPixels {
-		return Image{}, errors.New("screenshot exceeds 40 megapixels; capture a smaller area")
+		return image.Config{}, "", errors.New("screenshot exceeds 40 megapixels; capture a smaller area")
+	}
+	return cfg, format, nil
+}
+
+func encode(data []byte) (Image, error) {
+	cfg, format, err := inspect(data)
+	if err != nil {
+		return Image{}, err
 	}
 	return Image{
 		DataURL: "data:image/" + format + ";base64," + base64.StdEncoding.EncodeToString(data),
@@ -88,6 +97,13 @@ func readURI(uri string) (Image, error) {
 	data, err := io.ReadAll(io.LimitReader(f, MaxBytes+1))
 	if err != nil {
 		return Image{}, fmt.Errorf("read screenshot: %w", err)
+	}
+	cfg, format, err := inspect(data)
+	if err != nil {
+		return Image{}, err
+	}
+	if data, err = fitLongEdge(data, cfg, format); err != nil {
+		return Image{}, err
 	}
 	return encode(data)
 }
