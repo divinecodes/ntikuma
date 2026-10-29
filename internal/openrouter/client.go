@@ -132,6 +132,34 @@ type Result struct {
 	ReasoningDetails []json.RawMessage // Opaque continuation state; never answer text.
 }
 
+// ErrIncomplete reports a stream that closed with neither a finish reason nor
+// the [DONE] marker, so the text it returned is only part of the answer.
+var ErrIncomplete = errors.New("the connection closed before the answer finished")
+
+// FinishError reports an answer the provider ended early. OpenRouter
+// normalizes finish_reason to tool_calls, stop, length, content_filter or
+// error; the last three mean the text is cut short. Other values pass.
+type FinishError struct{ Reason string }
+
+func (e *FinishError) Error() string {
+	switch e.Reason {
+	case "length":
+		return "the answer reached the model's output limit and was cut off"
+	case "content_filter":
+		return "the provider's content filter stopped the answer"
+	default:
+		return "the provider stopped the answer with an error"
+	}
+}
+
+func finishError(reason string) error {
+	switch reason {
+	case "length", "content_filter", "error":
+		return &FinishError{Reason: reason}
+	}
+	return nil
+}
+
 type APIError struct {
 	Status  int
 	Code    any
@@ -241,6 +269,9 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 		}
 		if err == nil {
 			res.ToolCalls, err = calls.finish(res.FinishReason)
+		}
+		if err == nil {
+			err = finishError(res.FinishReason)
 		}
 	}()
 
@@ -456,6 +487,11 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 	}
 	if !complete && (len(calls.calls) > 0 || res.FinishReason == "tool_calls") {
 		return res, fmt.Errorf("openrouter: incomplete tool-call stream: %w", io.ErrUnexpectedEOF)
+	}
+	// A finish reason is enough to call the answer whole; some proxies drop the
+	// end marker. With neither, the connection closed mid-answer.
+	if !complete && res.FinishReason == "" {
+		return res, fmt.Errorf("openrouter: %w", ErrIncomplete)
 	}
 	return res, nil
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"path/filepath"
@@ -350,5 +351,28 @@ func TestFriendlyError(t *testing.T) {
 	}
 	if got := friendlyError(errors.New("boom")); got != "boom" {
 		t.Fatal(got)
+	}
+}
+
+func TestCutOffAnswersKeepTheirTextWithAReason(t *testing.T) {
+	for want, streamErr := range map[string]error{
+		"The answer reached the model's output limit and was cut off": &openrouter.FinishError{Reason: "length"},
+		"The provider's content filter stopped the answer":            &openrouter.FinishError{Reason: "content_filter"},
+		"The connection closed before the answer finished":            fmt.Errorf("openrouter: %w", openrouter.ErrIncomplete),
+	} {
+		llm := &fakeLLM{chunks: []string{"half"}, result: openrouter.Result{Text: "half"}, err: streamErr}
+		svc, rec, st := newChat(t, llm, "k")
+		res, err := svc.Send(SendRequest{Text: "hi"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ev, ok := wait(t, rec).(ErrorEvent)
+		if !ok || ev.Error != want {
+			t.Fatalf("event %+v, want %q", ev, want)
+		}
+		_, msgs, _ := st.GetChat(context.Background(), res.ChatID)
+		if len(msgs) != 2 || msgs[1].Content != "half" || decodeMeta(msgs[1].Meta).Error != want {
+			t.Fatalf("cut-off answer not saved with its reason: %+v", msgs)
+		}
 	}
 }

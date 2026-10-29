@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"ntikuma/internal/config"
@@ -354,5 +355,21 @@ func friendlyError(err error) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "OpenRouter took too long to respond"
 	}
+	// The partial text is saved alongside, so say why it stops where it does.
+	var finish *openrouter.FinishError
+	if errors.As(err, &finish) {
+		return sentence(finish.Error())
+	}
+	if errors.Is(err, openrouter.ErrIncomplete) {
+		return sentence(openrouter.ErrIncomplete.Error())
+	}
 	return err.Error()
+}
+
+func sentence(s string) string {
+	if s == "" {
+		return s
+	}
+	r, size := utf8.DecodeRuneInString(s)
+	return string(unicode.ToUpper(r)) + s[size:]
 }
