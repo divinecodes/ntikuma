@@ -377,3 +377,47 @@ func TestImageRequestsReuseTheModelCatalog(t *testing.T) {
 		t.Fatalf("Models: %v, %d fetches", err, catalogs)
 	}
 }
+
+func TestContextLengthIsTheSmallestKnownWindow(t *testing.T) {
+	catalogs := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		catalogs++
+		fmt.Fprint(w, `{"data":[
+			{"id":"vendor/big","context_length":1000000},
+			{"id":"vendor/small","context_length":32768},
+			{"id":"vendor/unsized","context_length":0},
+			{"id":"anthropic/claude-sonnet-4.5","context_length":200000},
+			{"id":"anthropic/claude-sonnet-4","context_length":180000},
+			{"id":"~anthropic/claude-opus-latest","context_length":400000},
+			{"id":"anthropic/claude-opus-4.1","context_length":100000}]}`)
+	}))
+	defer srv.Close()
+	c := New("key")
+	c.BaseURL = srv.URL
+	for _, tc := range []struct {
+		models []string
+		want   int
+	}{
+		{[]string{"vendor/big"}, 1000000},
+		{[]string{"vendor/big", "vendor/small"}, 32768},
+		// An alias missing from the catalog takes the smallest of its family.
+		{[]string{"~anthropic/claude-sonnet-latest", "vendor/big"}, 180000},
+		// An alias the catalog lists is used as listed.
+		{[]string{"~anthropic/claude-opus-latest"}, 400000},
+		{[]string{"vendor/unknown", "vendor/unsized", "vendor/big"}, 1000000},
+		{[]string{"vendor/unknown"}, 0},
+	} {
+		if got, err := c.ContextLength(context.Background(), tc.models); err != nil || got != tc.want {
+			t.Errorf("%v: %d %v, want %d", tc.models, got, err, tc.want)
+		}
+	}
+	if catalogs != 1 {
+		t.Fatalf("fetched the catalog %d times, want 1", catalogs)
+	}
+	srv.Close()
+	fresh := New("key")
+	fresh.BaseURL = "http://127.0.0.1:1"
+	if _, err := fresh.ContextLength(context.Background(), []string{"vendor/big"}); err == nil {
+		t.Fatal("unreachable catalog returned no error")
+	}
+}

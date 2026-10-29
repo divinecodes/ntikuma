@@ -11,6 +11,8 @@ import type {ApprovalEvent, Attachment, Chat, DeltaEvent, DoneEvent, ErrorEvent,
 
 // How long a chat stays "current" after popup hides
 const RESUME_WINDOW_MS = 10 * 60 * 1000;
+// Sent by Continue. It shows in the chat as the user's message.
+const continuePrompt = "Continue your last answer from exactly where it stopped, without repeating what you already wrote.";
 
 class AppState {
     view = $state<View>("bar");
@@ -322,6 +324,7 @@ class AppState {
                     activity: m.activity,
                     stopped: m.stopped,
                     error: m.error,
+                    cutOff: m.cutOff,
                 }));
             this.resetChat();
             this.chatId = detail.chat.id;
@@ -444,7 +447,25 @@ class AppState {
     // ---- Chat ----
     async send(textArgs?: string){
         const text = (textArgs ?? this.input).trim();
-        if(!text || this.streaming || this.screenshotPending || this.selectionPending) return;
+        if (this.screenshotPending || this.selectionPending) return;
+        await this.submit(text, true);
+    }
+
+    /** The last answer stopped early with some text, and nothing is answering. */
+    get canContinue(): boolean {
+        const last = this.messages[this.messages.length - 1];
+        return !this.streaming && last?.role === "assistant" && !last.streaming && !!last.cutOff;
+    }
+
+    /** Asks the model to pick up a cut-off answer. The draft and chips stay for the next question. */
+    async continueAnswer() {
+        if (this.canContinue) await this.submit(continuePrompt, false);
+    }
+
+    // composer: the text and chips come from the composer, which is cleared on
+    // send and restored if the send fails.
+    private async submit(text: string, composer: boolean){
+        if(!text || this.streaming) return;
         this.error = "";
         if (!this.hasKey){
             this.error = "Add your OpenRouter key in Preferences first";
@@ -452,18 +473,20 @@ class AppState {
             return;
         }
 
-        const attachments = $state.snapshot(this.attachments) as Attachment[];
+        const attachments = composer ? $state.snapshot(this.attachments) as Attachment[] : [];
         const web = this.web;
         this.answerWeb = web;
         const version = this.chatVersion;
         this.navigationVersion++;
-        this.clipboardVersion++;
-        this.invalidateSelection();
         this.stopPending = false;
         this.messages.push({id: `local-${Date.now()}`, role: "user", content: text, attachments: attachments });
-        this.input = "";
-        this.attachments = [];
-        this.clipboardMessage = "";
+        if (composer) {
+            this.clipboardVersion++;
+            this.invalidateSelection();
+            this.input = "";
+            this.attachments = [];
+            this.clipboardMessage = "";
+        }
         this.view = "chat";
         this.streaming = true;
         this.pendingSend = true;
@@ -507,10 +530,12 @@ class AppState {
             this.streaming = false;
             this.answerWeb = false;
             this.error = errorText(e);
-            //put the text back so nothing typed is lost
             this.messages.pop();
-            this.input = text;
-            this.attachments = attachments;
+            //put the text back so nothing typed is lost
+            if (composer) {
+                this.input = text;
+                this.attachments = attachments;
+            }
             if(!this.messages.length) this.view = "bar";
         }
     }
@@ -542,6 +567,7 @@ class AppState {
         } else {
             m.stopped = d.stopped;
         }
+        m.cutOff = d.cutOff ?? false;
         if (d.chatId === this.chatId) {
             this.streaming = false;
             this.answerWeb = false;

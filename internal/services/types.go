@@ -34,6 +34,12 @@ type Clipboard interface {
 	Text() (string, bool)
 }
 
+// secretMarker is a clipboard that can tell when a password manager marked the
+// copied data as secret. platform.Clipboard satisfies it.
+type secretMarker interface {
+	MarkedSecret() bool
+}
+
 // KeyStore holds the OpenRouter key. secrets.Keyring satisfies it.
 type KeyStore interface {
 	APIKey() (string, error)
@@ -81,6 +87,7 @@ type DoneEvent struct {
 	Model     string                `json:"model"`
 	Fallback  bool                  `json:"fallback"`
 	Stopped   bool                  `json:"stopped"`
+	CutOff    bool                  `json:"cutOff,omitempty"`
 	Citations []openrouter.Citation `json:"citations,omitempty"`
 	Searches  *int                  `json:"searches,omitempty"`
 	Activity  []ToolActivity        `json:"activity,omitempty"`
@@ -91,6 +98,7 @@ type ErrorEvent struct {
 	ChatID    string                `json:"chatId"`
 	MessageID string                `json:"messageId"`
 	Error     string                `json:"error"`
+	CutOff    bool                  `json:"cutOff,omitempty"`
 	Model     string                `json:"model,omitempty"`
 	Fallback  bool                  `json:"fallback,omitempty"`
 	Citations []openrouter.Citation `json:"citations,omitempty"`

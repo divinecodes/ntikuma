@@ -73,6 +73,7 @@ export class Preferences {
             this.settings = { ...settings, fallbacks: settings.fallbacks ?? [],
                 localTools: settings.localTools ?? false,
                 toolRoots: [...(settings.toolRoots ?? [])],
+                allowHiddenFiles: settings.allowHiddenFiles ?? false,
                 allowShellCommands: settings.allowShellCommands ?? false,
                 voice: {
                     ...settings.voice,

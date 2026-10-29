@@ -28,7 +28,7 @@ type turnResult struct {
 func toolRegistry(settings config.Settings) (*tools.Registry, error) {
 	registry := &tools.Registry{}
 	if settings.LocalTools {
-		for _, tool := range tools.FileTools(settings.ToolRoots) {
+		for _, tool := range tools.FileTools(settings.ToolRoots, settings.AllowHiddenFiles) {
 			if err := registry.Register(tool); err != nil {
 				return nil, err
 			}
@@ -44,7 +44,9 @@ func toolRegistry(settings config.Settings) (*tools.Registry, error) {
 
 // runTurn keeps tool exchanges inside this one answer. Later questions replay
 // stored user/assistant text and screenshots, never calls, results or reasoning.
-func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Request, chatID, answerID string, onDelta func(string), flush func()) (all turnResult, err error) {
+// hiddenAtStart is the hidden-files setting when the answer began. Like local
+// tools and shell commands, turning it on takes effect from the next question.
+func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Request, hiddenAtStart bool, chatID, answerID string, onDelta func(string), flush func()) (all turnResult, err error) {
 	var serverTools []openrouter.Tool
 	localAtStart := false
 	shellAtStart := false
@@ -93,6 +95,7 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 		if localAtStart {
 			settings := s.cfg.Get()
 			settings.AllowShellCommands = settings.AllowShellCommands && shellAtStart
+			settings.AllowHiddenFiles = settings.AllowHiddenFiles && hiddenAtStart
 			registry, err := toolRegistry(settings)
 			if err != nil {
 				return all, err
@@ -175,6 +178,7 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 			s.events.Emit(EventChatTool, ToolEvent{ChatID: chatID, MessageID: answerID, Activity: record.ToolActivity})
 			settings := s.cfg.Get()
 			settings.AllowShellCommands = settings.AllowShellCommands && shellAtStart
+			settings.AllowHiddenFiles = settings.AllowHiddenFiles && hiddenAtStart
 			registry, err := toolRegistry(settings)
 			if err != nil {
 				return all, err

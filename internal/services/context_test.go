@@ -194,3 +194,30 @@ func TestAutoClipboardHoldsBackSecretsButManualClipboardAttaches(t *testing.T) {
 		t.Fatalf("empty: %+v %v", auto, err)
 	}
 }
+
+type markedClipboard struct {
+	fakeClipboard
+	secret bool
+}
+
+func (m markedClipboard) MarkedSecret() bool { return m.secret }
+
+func TestAutoClipboardHoldsBackWhatAPasswordManagerMarked(t *testing.T) {
+	// An ordinary-looking passphrase passes the heuristic, but the hint catches it.
+	c := NewContextService(nil, markedClipboard{fakeClipboard{"correct horse battery staple", true}, true}, nil, nil)
+	auto, err := c.AutoClipboard()
+	if err != nil || auto.Attachment != nil || !strings.Contains(auto.Message, "password manager") {
+		t.Fatalf("auto: %+v %v", auto, err)
+	}
+	if manual, err := c.Clipboard(); err != nil || manual == nil || manual.Content != "correct horse battery staple" {
+		t.Fatalf("manual: %+v %v", manual, err)
+	}
+	c = NewContextService(nil, markedClipboard{fakeClipboard{"correct horse battery staple", true}, false}, nil, nil)
+	if auto, err := c.AutoClipboard(); err != nil || auto.Attachment == nil || auto.Message != "" {
+		t.Fatalf("unmarked: %+v %v", auto, err)
+	}
+	c = NewContextService(nil, markedClipboard{fakeClipboard{"", false}, true}, nil, nil)
+	if auto, err := c.AutoClipboard(); err != nil || auto.Attachment != nil || auto.Message != "" {
+		t.Fatalf("empty: %+v %v", auto, err)
+	}
+}

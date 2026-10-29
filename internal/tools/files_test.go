@@ -18,8 +18,13 @@ import (
 
 func fileRegistry(t *testing.T, roots ...string) *Registry {
 	t.Helper()
+	return fileRegistryWith(t, false, roots...)
+}
+
+func fileRegistryWith(t *testing.T, hidden bool, roots ...string) *Registry {
+	t.Helper()
 	registry := new(Registry)
-	for _, tool := range FileTools(roots) {
+	for _, tool := range FileTools(roots, hidden) {
 		if err := registry.Register(tool); err != nil {
 			t.Fatal(err)
 		}
@@ -293,5 +298,93 @@ func TestDirectoryListingFillsPastHiddenEntries(t *testing.T) {
 	listing := runPath(fileRegistry(t, root), "list_directory", root)
 	if strings.Count(listing, `"file-`) != 10 || strings.Contains(listing, ".hidden-") || strings.Contains(listing, "truncated") || !strings.Contains(listing, "[612 hidden or key files not shown]") {
 		t.Fatal(listing)
+	}
+}
+
+func TestFileToolsReadDotfilesWhenAllowedButNeverKeys(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{".config/app", ".ssh", ".gnupg", ".aws", ".docker", ".kube", "project"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	visible := []string{".bashrc", ".config/app/settings.toml", "project/.gitignore", ".aws/config", ".docker/daemon.json"}
+	for _, name := range visible {
+		writeFile(t, filepath.Join(root, name), []byte("dotfile"))
+	}
+	private := []string{".env", ".env.local", ".envrc", ".netrc", ".git-credentials", ".npmrc", ".pypirc", ".pgpass",
+		".aws/credentials", ".docker/config.json", ".kube/config", ".ssh/config", ".gnupg/gpg.conf", "server.pem", "id_rsa"}
+	for _, name := range private {
+		writeFile(t, filepath.Join(root, name), []byte("MUST NEVER RETURN THIS"))
+	}
+	registry := fileRegistryWith(t, true, root)
+	for _, name := range visible {
+		if output := runPath(registry, "read_file", filepath.Join(root, name)); output != "dotfile" {
+			t.Fatalf("read %s: %q", name, output)
+		}
+	}
+	for _, name := range private {
+		output := runPath(registry, "read_file", filepath.Join(root, name))
+		if !strings.Contains(output, "key or credential") || strings.Contains(output, "hidden") || strings.Contains(output, "MUST NEVER RETURN THIS") {
+			t.Fatalf("read %s: %q", name, output)
+		}
+	}
+	listing := runPath(registry, "list_directory", root)
+	for _, expected := range []string{`".bashrc"`, `".config"`, `".aws"`, `"project"`, "[12 key or credential files not shown]"} {
+		if !strings.Contains(listing, expected) {
+			t.Fatalf("listing missing %s: %s", expected, listing)
+		}
+	}
+	for _, hidden := range []string{`".env"`, `".netrc"`, `".ssh"`, `".gnupg"`, `"id_rsa"`} {
+		if strings.Contains(listing, hidden) {
+			t.Fatalf("listing shows %s: %s", hidden, listing)
+		}
+	}
+	if listing := runPath(registry, "list_directory", filepath.Join(root, ".aws")); !strings.Contains(listing, `"config"`) || strings.Contains(listing, `"credentials"`) {
+		t.Fatal(listing)
+	}
+	if output := runPath(registry, "list_directory", filepath.Join(root, ".ssh")); !strings.Contains(output, "key or credential") {
+		t.Fatal(output)
+	}
+	// The same folder with hidden files off still refuses every dotfile.
+	if output := runPath(fileRegistry(t, root), "read_file", filepath.Join(root, ".bashrc")); !strings.Contains(output, "hidden") {
+		t.Fatal(output)
+	}
+}
+
+func TestToolFolderAtACredentialDirectoryStillRefusesItsKeys(t *testing.T) {
+	home := t.TempDir()
+	aws, ssh := filepath.Join(home, ".aws"), filepath.Join(home, ".ssh")
+	for _, dir := range []string{aws, ssh} {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, filepath.Join(aws, "config"), []byte("region = eu-west-1"))
+	writeFile(t, filepath.Join(aws, "credentials"), []byte("MUST NEVER RETURN THIS"))
+	writeFile(t, filepath.Join(ssh, "known_hosts"), []byte("MUST NEVER RETURN THIS"))
+	for _, hidden := range []bool{false, true} {
+		registry := fileRegistryWith(t, hidden, aws, ssh)
+		if output := runPath(registry, "read_file", filepath.Join(aws, "config")); output != "region = eu-west-1" {
+			t.Fatalf("hidden=%v: %q", hidden, output)
+		}
+		for _, path := range []string{filepath.Join(aws, "credentials"), filepath.Join(ssh, "known_hosts")} {
+			if output := runPath(registry, "read_file", path); strings.Contains(output, "MUST NEVER RETURN THIS") || !strings.HasPrefix(output, "error:") {
+				t.Fatalf("hidden=%v read %s: %q", hidden, path, output)
+			}
+		}
+		if listing := runPath(registry, "list_directory", aws); strings.Contains(listing, `"credentials"`) {
+			t.Fatalf("hidden=%v: %s", hidden, listing)
+		}
+	}
+}
+
+func TestFileToolDescriptionsFollowTheHiddenFilesSetting(t *testing.T) {
+	for _, hidden := range []bool{false, true} {
+		for _, tool := range FileTools([]string{"/tmp"}, hidden) {
+			if description := tool.Def().Description; strings.Contains(description, "Hidden") == hidden || !strings.Contains(strings.ToLower(description), "key or credential") {
+				t.Fatalf("hidden=%v: %s", hidden, description)
+			}
+		}
 	}
 }

@@ -31,6 +31,7 @@ type Settings struct {
 	WebSearch          WebSearch `json:"webSearch"`
 	LocalTools         bool      `json:"localTools"`
 	ToolRoots          []string  `json:"toolRoots"`
+	AllowHiddenFiles   bool      `json:"allowHiddenFiles"`
 	AllowShellCommands bool      `json:"allowShellCommands"`
 
 	// keep chat days. delete chats older than this many days. 0 keeps the chats forever
@@ -130,7 +131,7 @@ func Defaults() Settings {
 			Cohere:     CohereModel{Threads: 4, Language: "en"},
 		},
 		WebSearch:          WebSearch{MaxResults: 5, MaxFetches: 3, MaxToolCalls: 6},
-		ToolRoots:          []string{"~/Documents", "~/Downloads", "~/codes"},
+		ToolRoots:          []string{"~/Documents", "~/codes"}, // not ~/Downloads: downloaded files can carry instructions
 		KeepChatsDays:      0,
 		UsePortalShortcuts: false,
 	}

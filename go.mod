@@ -2,6 +2,9 @@ module ntikuma
 
 go 1.26.0
 
+// Generated tooling and the native speech helper's module cache are not app packages.
+ignore ./build
+
 require (
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/wailsapp/wails/v3 v3.0.0-beta.34

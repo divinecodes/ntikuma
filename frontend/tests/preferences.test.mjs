@@ -62,13 +62,16 @@ test("local tools fail closed for missing or explicitly empty roots and preserve
     const { prefs, calls } = await setup(t);
     assert.equal(prefs.settings.localTools, false);
     assert.equal(prefs.settings.allowShellCommands, false);
+    assert.equal(prefs.settings.allowHiddenFiles, false);
     assert.deepEqual([...prefs.settings.toolRoots], []);
     prefs.settings.allowShellCommands = true;
+    prefs.settings.allowHiddenFiles = true;
     prefs.settings.localTools = true;
     prefs.toolSettingsChanged();
     await prefs.flush();
     assert.deepEqual(calls.saved.at(-1).toolRoots, []);
     assert.equal(calls.saved.at(-1).allowShellCommands, true);
+    assert.equal(calls.saved.at(-1).allowHiddenFiles, true);
 });
 
 test("tool folders add, edit, remove, and persist an empty list without changing voice or Web", async (t) => {

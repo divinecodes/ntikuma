@@ -195,7 +195,7 @@ func TestCohereSettingsNormalizeAndValidateLanguage(t *testing.T) {
 
 func TestLocalToolsDefaultsMigrationAndEmptyRootsStayDisabled(t *testing.T) {
 	defaults := Defaults()
-	if defaults.LocalTools || defaults.AllowShellCommands || !reflect.DeepEqual(defaults.ToolRoots, []string{"~/Documents", "~/Downloads", "~/codes"}) {
+	if defaults.LocalTools || defaults.AllowShellCommands || defaults.AllowHiddenFiles || !reflect.DeepEqual(defaults.ToolRoots, []string{"~/Documents", "~/codes"}) {
 		t.Fatal(defaults)
 	}
 	for _, document := range []string{`{"systemPrompt":"legacy"}`, `{"toolRoots":[]}`, `{"toolRoots":null}`} {
@@ -225,6 +225,18 @@ func TestLocalToolsDefaultsMigrationAndEmptyRootsStayDisabled(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(again.Get(), got) {
 			t.Fatalf("empty/default roots round trip: %v", err)
 		}
+	}
+}
+
+func TestSavedToolRootsKeepDownloads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	saved := []string{"~/Documents", "~/Downloads", "~/codes"}
+	if err := os.WriteFile(path, []byte(`{"toolRoots":["~/Documents","~/Downloads","~/codes"]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := Load(path)
+	if err != nil || !reflect.DeepEqual(manager.Get().ToolRoots, saved) {
+		t.Fatalf("saved roots changed: %v %v", manager.Get().ToolRoots, err)
 	}
 }
 

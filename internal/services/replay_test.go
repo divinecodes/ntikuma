@@ -74,7 +74,7 @@ func TestLongHistoryDropsTheOldestTurnsFirst(t *testing.T) {
 			store.Message{Role: "user", Content: fmt.Sprintf("q%d %s", i, strings.Repeat("x", 30_000))},
 			store.Message{Role: "assistant", Content: fmt.Sprintf("a%d %s", i, strings.Repeat("y", 30_000))})
 	}
-	messages := buildMessages("", history, "question now", nil, 20000, time.Now())
+	messages := trimHistory(buildMessages("", history, "question now", nil, 20000, time.Now()), maxHistoryChars)
 	total := 0
 	for _, m := range messages[1:] {
 		total += len(m.Content)
@@ -88,13 +88,13 @@ func TestLongHistoryDropsTheOldestTurnsFirst(t *testing.T) {
 	if strings.HasPrefix(messages[1].Content, "q0 ") || !strings.Contains(messages[0].Content, "Older messages in this chat were left out") {
 		t.Fatal("oldest turns kept or the model wasn't told")
 	}
-	short := buildMessages("", history[:2], "question now", nil, 20000, time.Now())
+	short := trimHistory(buildMessages("", history[:2], "question now", nil, 20000, time.Now()), maxHistoryChars)
 	if len(short) != 4 || strings.Contains(short[0].Content, "left out") {
 		t.Fatalf("short history trimmed: %d messages", len(short))
 	}
 	// The current question is never dropped, even when it alone is over budget.
 	huge := strings.Repeat("z", maxHistoryChars+1)
-	alone := buildMessages("", history, huge, nil, 0, time.Now())
+	alone := trimHistory(buildMessages("", history, huge, nil, 0, time.Now()), maxHistoryChars)
 	if len(alone) != 2 || alone[1].Content != huge {
 		t.Fatalf("current question dropped: %d messages", len(alone))
 	}
@@ -140,5 +140,77 @@ func TestAFailedAnswerDoesNotBreakTheNextQuestion(t *testing.T) {
 		if strings.TrimSpace(m.Content) == "" {
 			t.Fatalf("empty %s message sent: %+v", m.Role, llm.got.Messages)
 		}
+	}
+}
+
+type sizedLLM struct {
+	streamFunc
+	tokens int
+	err    error
+	asked  *[][]string
+}
+
+func (s sizedLLM) ContextLength(_ context.Context, models []string) (int, error) {
+	*s.asked = append(*s.asked, models)
+	return s.tokens, s.err
+}
+
+func TestHistoryBudgetFollowsTheSmallestContextWindow(t *testing.T) {
+	var asked [][]string
+	sized := func(tokens int, err error) LLM { return sizedLLM{tokens: tokens, err: err, asked: &asked} }
+	for _, tc := range []struct {
+		name string
+		llm  LLM
+		want int
+	}{
+		{"small window", sized(32_000, nil), 64_000},
+		{"large window keeps the cap", sized(1_000_000, nil), maxHistoryChars},
+		{"unknown models", sized(0, nil), maxHistoryChars},
+		{"catalog error", sized(16_000, errors.New("offline")), maxHistoryChars},
+		{"no catalog", streamFunc(nil), maxHistoryChars},
+	} {
+		if got := historyBudget(context.Background(), tc.llm, []string{"vendor/a", "vendor/b"}); got != tc.want {
+			t.Errorf("%s: %d, want %d", tc.name, got, tc.want)
+		}
+	}
+	if len(asked) != 4 || len(asked[0]) != 2 || asked[0][1] != "vendor/b" {
+		t.Fatalf("asked for %v", asked)
+	}
+}
+
+func TestLongChatsFitTheModelsContextWindow(t *testing.T) {
+	var asked [][]string
+	var sent []openrouter.Request
+	llm := sizedLLM{tokens: 16_000, asked: &asked, streamFunc: func(_ context.Context, req openrouter.Request, _ func(string)) (openrouter.Result, error) {
+		sent = append(sent, req)
+		return openrouter.Result{Text: "ok"}, nil
+	}}
+	svc, rec, _ := newChat(t, &fakeLLM{}, "key")
+	svc.newLLM = func(string) LLM { return llm }
+	first, err := svc.Send(SendRequest{Text: "short question", Model: "vendor/small"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait(t, rec)
+	// A short chat is far below any budget, so no catalog lookup delays it.
+	if len(asked) != 0 {
+		t.Fatalf("looked up %v for a short chat", asked)
+	}
+	for i := range 4 {
+		if _, err := svc.Send(SendRequest{ChatID: first.ChatID, Text: fmt.Sprintf("q%d %s", i, strings.Repeat("x", 12_000)), Model: "vendor/small"}); err != nil {
+			t.Fatal(err)
+		}
+		wait(t, rec)
+	}
+	last := sent[len(sent)-1]
+	total := 0
+	for _, m := range last.Messages[1:] {
+		total += len(m.Content)
+	}
+	if total > 32_000 || !strings.HasPrefix(last.Messages[len(last.Messages)-1].Content, "q3 ") || !strings.Contains(last.Messages[0].Content, "left out") {
+		t.Fatalf("sent %d characters in %d messages", total, len(last.Messages))
+	}
+	if len(asked) == 0 || asked[len(asked)-1][0] != "vendor/small" {
+		t.Fatalf("asked for %v", asked)
 	}
 }

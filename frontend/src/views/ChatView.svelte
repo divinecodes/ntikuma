@@ -45,6 +45,7 @@
     }
 
     const  streamingModel = $derived(app.modelOverride || app.settings?.defaultModel || "");
+    const lastId = $derived(app.messages[app.messages.length - 1]?.id);
 </script>
 
 <header>
@@ -89,10 +90,19 @@
                 {#if m.stopped}
                     <p class="note">Stopped</p>
                 {/if}
-                {#if !m.streaming && m.content}
-                    <button type="button" class="copy" onclick={() => Clipboard.SetText(m.content)}>
-                        <Icon name="copy" size={14} />Copy
-                    </button>
+                {#if (!m.streaming && m.content) || (app.canContinue && m.id === lastId)}
+                    <div class="actions">
+                        {#if app.canContinue && m.id === lastId}
+                            <button type="button" class="copy continue" onclick={() => { void app.continueAnswer(); }}>
+                                <Icon name="send" size={14} />Continue
+                            </button>
+                        {/if}
+                        {#if !m.streaming && m.content}
+                            <button type="button" class="copy" onclick={() => Clipboard.SetText(m.content)}>
+                                <Icon name="copy" size={14} />Copy
+                            </button>
+                        {/if}
+                    </div>
                 {/if}
             </div>
         {/if}
@@ -266,6 +276,13 @@
     }
     .copy:hover {
         background: var(--hover);
+    }
+    .actions {
+        display: flex;
+        gap: 4px;
+    }
+    .continue {
+        color: var(--accent-text);
     }
     .composer-chips {
         border-top: 1px solid var(--border);
