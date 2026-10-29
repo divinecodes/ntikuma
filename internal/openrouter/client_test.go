@@ -333,3 +333,47 @@ func TestEarlyFinishReasonsAreErrorsThatKeepTheText(t *testing.T) {
 		}
 	}
 }
+
+func TestImageRequestsReuseTheModelCatalog(t *testing.T) {
+	catalogs, fail := 0, true
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/models":
+			catalogs++
+			if fail {
+				// A failed lookup must not be remembered.
+				fail = false
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			fmt.Fprint(w, `{"data":[{"id":"vendor/vision","architecture":{"input_modalities":["text","image"]}}]}`)
+		default:
+			sse(w, `data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}`, "data: [DONE]")
+		}
+	}))
+	defer srv.Close()
+	req := Request{Models: []string{"vendor/vision"}, Messages: []Message{{Role: "user", Content: "What is this?", Images: []string{"data:image/png;base64,aW1hZ2U="}}}}
+	stream := func() error {
+		c := New("key") // A new client per answer, as ChatService makes.
+		c.BaseURL = srv.URL
+		_, err := c.Stream(context.Background(), req, nil)
+		return err
+	}
+	if err := stream(); err == nil {
+		t.Fatal("catalog failure ignored")
+	}
+	for range 3 {
+		if err := stream(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if catalogs != 2 {
+		t.Fatalf("fetched the catalog %d times, want 2", catalogs)
+	}
+	// Settings still lists the live catalog.
+	c := New("key")
+	c.BaseURL = srv.URL
+	if _, err := c.Models(context.Background()); err != nil || catalogs != 3 {
+		t.Fatalf("Models: %v, %d fetches", err, catalogs)
+	}
+}

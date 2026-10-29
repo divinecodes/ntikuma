@@ -4,7 +4,7 @@ Ntikuma combines local desktop features with chat through OpenRouter. Review att
 
 ## Data sent for chat
 
-Sending a question sends its text, previous user/assistant messages in that chat, the system prompt, and attached context to OpenRouter and the selected model provider. The system prompt includes your local date, time and timezone. Sent clipboard text, selected text and screenshots are included again in follow-up questions.
+Sending a question sends its text, previous user/assistant messages in that chat, the system prompt, and attached context to OpenRouter and the selected model provider. The system prompt includes your local date, time and timezone. Sent clipboard text, selected text and screenshots are included again in follow-up questions. Only the four most recent screenshots in a chat (at most 24 MiB in total) are resent. In a long chat, the oldest messages stop being sent once the conversation passes about 300,000 characters; they stay in your local history.
 
 Web search is enabled by default. Turn off the Web pill, or press Ctrl+G, for a question without web tools. With Web enabled, OpenRouter's search/fetch services may process the question and conversation context. Sources and reported search counts are saved with the answer.
 

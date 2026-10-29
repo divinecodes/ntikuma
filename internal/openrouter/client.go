@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 )
@@ -280,7 +281,7 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 		// Never silently drop an image to satisfy a text-only fallback. Check
 		// the current catalog because model capabilities and aliases change.
 		catalogCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		catalog, err := c.Models(catalogCtx)
+		catalog, err := c.cachedModels(catalogCtx)
 		cancel()
 		if err != nil {
 			return Result{}, fmt.Errorf("couldn't check image support; try again: %w", err)
@@ -543,6 +544,41 @@ func imageModels(models []string, catalog []ModelInfo) []string {
 		}
 	}
 	return out
+}
+
+// Image requests check the catalog on every model step, and the client is
+// rebuilt for each answer, so successful lookups are shared for a while.
+const catalogTTL = 10 * time.Minute
+
+var catalogCache struct {
+	sync.Mutex
+	entries map[string]cachedCatalog
+}
+
+type cachedCatalog struct {
+	models  []ModelInfo
+	fetched time.Time
+}
+
+func (c *Client) cachedModels(ctx context.Context) ([]ModelInfo, error) {
+	key := strings.TrimRight(c.BaseURL, "/")
+	catalogCache.Lock()
+	entry, ok := catalogCache.entries[key]
+	catalogCache.Unlock()
+	if ok && time.Since(entry.fetched) < catalogTTL {
+		return entry.models, nil
+	}
+	models, err := c.Models(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catalogCache.Lock()
+	if catalogCache.entries == nil {
+		catalogCache.entries = make(map[string]cachedCatalog)
+	}
+	catalogCache.entries[key] = cachedCatalog{models: models, fetched: time.Now()}
+	catalogCache.Unlock()
+	return models, nil
 }
 
 // Models lists the models OpenRouter currently offers. No key is needed.
