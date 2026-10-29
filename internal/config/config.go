@@ -130,7 +130,7 @@ func Defaults() Settings {
 			Cohere:     CohereModel{Threads: 4, Language: "en"},
 		},
 		WebSearch:          WebSearch{MaxResults: 5, MaxFetches: 3, MaxToolCalls: 6},
-		ToolRoots:          []string{"~/Documents", "~/Downloads", "~/codes"},
+		ToolRoots:          []string{"~/Documents", "~/codes"}, // not ~/Downloads: downloaded files can carry instructions
 		KeepChatsDays:      0,
 		UsePortalShortcuts: false,
 	}
