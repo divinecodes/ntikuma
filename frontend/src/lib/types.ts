@@ -14,6 +14,12 @@ export interface SelectionSupport {
     message: string;
 }
 
+/** Mirrors services.ClipboardCapture: a held-back clipboard has only a message. */
+export interface ClipboardCapture {
+    attachment: Attachment | null;
+    message: string;
+}
+
 export interface SelectionCapture {
     attachment: Attachment | null;
     message: string;

@@ -117,7 +117,7 @@ func Defaults() Settings {
 		DefaultModel:    "~anthropic/claude-sonnet-latest",
 		Fallbacks:       []string{"openai/gpt-5.1"},
 		SystemPrompt:    "You are Ntikuma, a quick desktop assistant. Answer directly and concisely. Use Markdown for code.",
-		AttachClipboard: true,
+		AttachClipboard: false,
 		AttachSelection: false,
 		OfferScreenshot: true,
 		MaxContextChars: 20000,

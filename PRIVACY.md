@@ -14,7 +14,7 @@ OpenRouter and its providers have their own processing and retention policies. N
 
 ## Clipboard and screenshots
 
-Automatic clipboard attachment starts enabled. The chip shows what will be attached; remove it or turn off auto-attach in Preferences before sending sensitive clipboard content. Selected-text attachment is optional, and screenshots use the desktop's interactive capture dialog. Unsent chips are not chat requests.
+Automatic clipboard attachment starts off; choose Clipboard to attach copied text to one question, or turn on auto-attach in Preferences or the composer. With auto-attach on, the chip shows what will be attached; remove it before sending sensitive clipboard content. If you have saved Preferences before, your saved auto-attach setting is kept. Auto-attach holds back clipboard text that looks like a password, API token, private key or a `KEY=value` secret, and says so; choose Clipboard to attach it anyway. This check is a heuristic, so it can miss a secret or hold back ordinary text. Selected-text attachment is optional, and screenshots use the desktop's interactive capture dialog. Unsent chips are not chat requests.
 
 Removing an unsent chip excludes it from that question. Context already sent remains in its chat history and can be included in later questions. Deleting a chat does not delete an original image saved by the desktop's screenshot application.
 

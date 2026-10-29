@@ -129,3 +129,68 @@ func TestScreenshotCancelBusyAndShutdown(t *testing.T) {
 		t.Fatal("capture started after shutdown")
 	}
 }
+
+func TestLooksSecretFlagsKeysTokensAndPasswords(t *testing.T) {
+	// Fake tokens are split so the CI secrets scan doesn't flag them.
+	secrets := []string{
+		"sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef",
+		"  ghp_" + "16C7e42F292c6912E7710c838347Ae178B4a\n",
+		"AKIAIOSFODNN7EXAMPLE",
+		"xoxb-" + "123456789012-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx",
+		"eyJhbGciOiJIUzI1NiJ9" + ".eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+		"-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----",
+		"Tr0ub4dor&3",
+		"k9#Lm2$pQx7!vR4w",
+		"Summer2024!",
+		"Xq7mP2vL9kR4tW8z",
+		"3d3c42e5aac5ba805825da76410c181273ba90b1",
+		"DATABASE_PASSWORD=hunter2hunter2",
+		"export OPENAI_API_KEY='sk-proj-abcdefghijklmnopqrstuvwx'",
+		"curl https://openrouter.ai/api/v1/models -H \"Authorization: Bearer sk-or-v1-0123456789abcdef0123456789\"",
+		"host: db\npassword: correct-horse-battery\nport: 5432",
+	}
+	for _, text := range secrets {
+		if !looksSecret(text) {
+			t.Errorf("missed secret %q", text)
+		}
+	}
+	ordinary := []string{
+		"What does this error mean?",
+		"https://example.com/docs/getting-started?page=2",
+		"/home/you/codes/ntikuma/main.go",
+		"~/Documents/notes.md",
+		"user_id_2",
+		"fmt.Println(\"hello\")",
+		"snake_case_name_2024",
+		"go test -race ./internal/...",
+		"Meeting moved to 3pm on Thursday.",
+		"The password field is required.",
+		"hello",
+		"",
+	}
+	for _, text := range ordinary {
+		if looksSecret(text) {
+			t.Errorf("flagged ordinary text %q", text)
+		}
+	}
+}
+
+func TestAutoClipboardHoldsBackSecretsButManualClipboardAttaches(t *testing.T) {
+	c := NewContextService(nil, fakeClipboard{"sk-or-v1-0123456789abcdef0123456789abcdef\n", true}, nil, nil)
+	auto, err := c.AutoClipboard()
+	if err != nil || auto.Attachment != nil || !strings.Contains(auto.Message, "looks like a password or key") {
+		t.Fatalf("auto: %+v %v", auto, err)
+	}
+	manual, err := c.Clipboard()
+	if err != nil || manual == nil || manual.Content != "sk-or-v1-0123456789abcdef0123456789abcdef" {
+		t.Fatalf("manual: %+v %v", manual, err)
+	}
+	c = NewContextService(nil, fakeClipboard{"ordinary copied text", true}, nil, nil)
+	if auto, err := c.AutoClipboard(); err != nil || auto.Attachment == nil || auto.Attachment.Content != "ordinary copied text" || auto.Message != "" {
+		t.Fatalf("ordinary: %+v %v", auto, err)
+	}
+	c = NewContextService(nil, fakeClipboard{"", false}, nil, nil)
+	if auto, err := c.AutoClipboard(); err != nil || auto.Attachment != nil || auto.Message != "" {
+		t.Fatalf("empty: %+v %v", auto, err)
+	}
+}
