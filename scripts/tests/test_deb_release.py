@@ -220,6 +220,75 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(self.plan()["items"], [])
         self.assertTrue(all(release["draft"] for release in self.api.releases.values()))
 
+    def test_ready_draft_with_placeholder_tag_is_not_replanned(self):
+        first = self.plan()["items"][0]
+        self.publish(first)
+        self.api.releases[1]["tag_name"] = "untagged-1748a7a7c46e3544be07"
+        self.assertEqual(RELEASE.marker(self.api.releases[1]["body"])["state"], "ready")
+        self.api.writes.clear()
+        self.assertEqual([(p["pr"], p["version"]) for p in self.plan()["items"]], [(2, "0.1.1"), (3, "0.1.2")])
+        self.assertEqual(self.api.writes, [])
+        RELEASE.publish_one(self.api, self.history, first, self.root / "v0.1.0")
+        self.assertEqual(self.api.writes, [])
+
+    def test_batch_continues_after_a_ready_placeholder_draft(self):
+        self.api = FakeGitHub([pull(1), pull(2)])
+        first, second = self.plan()["items"]
+        self.publish(first)
+        self.api.releases[1]["tag_name"] = "untagged-1748a7a7c46e3544be07"
+        self.publish(second)
+        self.assertEqual(len(self.api.releases), 2)
+        self.assertEqual(self.plan()["items"], [])
+
+    def test_pending_placeholder_draft_resumes_without_creating_another_release(self):
+        first = self.plan()["items"][0]
+        self.api.failure = "asset"
+        with self.assertRaisesRegex(RELEASE.ReleaseError, "fixture interrupted"):
+            self.publish(first)
+        self.api.releases[1]["tag_name"] = "untagged-1748a7a7c46e3544be07"
+        self.assertEqual(self.plan()["items"][0], first)
+        self.api.writes.clear()
+        RELEASE.publish_one(self.api, self.history, first, self.root / "v0.1.0")
+        self.assertEqual(len(self.api.releases), 1)
+        self.assertEqual(len(self.api.assets[1]), 3)
+        self.assertFalse(any(method == "POST" and path == "releases" for method, path, _ in self.api.writes))
+        self.assertEqual(self.api.releases[1]["tag_name"], "v0.1.0")
+        self.assertEqual(RELEASE.marker(self.api.releases[1]["body"])["state"], "ready")
+
+    def test_placeholder_draft_requires_its_unchanged_managed_marker(self):
+        first = self.plan()["items"][0]
+        self.publish(first)
+        self.api.releases[1]["tag_name"] = "untagged-1748a7a7c46e3544be07"
+        body = self.api.releases[1]["body"]
+        changed = {**first, "sha": sha(2)}
+        for invalid in ("Maintainer removed the marker.", RELEASE.release_notes(self.api.repo, changed)):
+            with self.subTest(body=invalid):
+                self.api.releases[1]["body"] = invalid
+                self.api.writes.clear()
+                with self.assertRaisesRegex(RELEASE.ReleaseError, "marker"):
+                    self.plan()
+                self.assertEqual(self.api.writes, [])
+        self.api.releases[1]["body"] = body
+
+    def test_duplicate_placeholder_drafts_for_one_version_are_rejected(self):
+        first = self.plan()["items"][0]
+        self.publish(first)
+        self.api.releases[2] = {**copy.deepcopy(self.api.releases[1]), "id": 2,
+                                "tag_name": "untagged-1748a7a7c46e3544be07"}
+        with self.assertRaisesRegex(RELEASE.ReleaseError, "duplicate"):
+            self.plan()
+
+    def test_published_placeholder_and_foreign_tag_are_not_adopted(self):
+        first = self.plan()["items"][0]
+        self.publish(first)
+        for tag, draft in (("untagged-1748a7a7c46e3544be07", False), ("foreign-tag", True)):
+            with self.subTest(tag=tag, draft=draft):
+                self.api.releases[1].update(tag_name=tag, draft=draft)
+                self.api.writes.clear()
+                with self.assertRaisesRegex(RELEASE.ReleaseError, "unexpected tag"):
+                    self.plan()
+                self.assertEqual(self.api.writes, [])
+
     def test_retry_recovers_tag_release_and_upload_failures_without_new_versions(self):
         for failure in ("tag", "release", "asset"):
             with self.subTest(failure=failure):
