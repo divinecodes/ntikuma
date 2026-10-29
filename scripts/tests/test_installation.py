@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import signal
@@ -14,6 +15,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_ID = "dev.divinetettey.ntikuma"
+WAILS_VERSION = re.search(r"github.com/wailsapp/wails/v3\s+(\S+)", (ROOT / "go.mod").read_text()).group(1)
 
 
 def executable(path, content):
@@ -254,7 +256,7 @@ p.write_text(json.dumps(state))
         repo = self.bootstrap_checkout()
         executable(self.fakebin / "node", "#!/bin/sh\nexit 0\n")
         executable(self.fakebin / "npm", '#!/bin/sh\necho "npm $*" >> "$NTIKUMA_TEST_LOG"\n')
-        cli = '#!/bin/sh\nif [ "$1" = version ]; then echo v3.0.0-beta.28 >&2; else echo "wails $*" >> "$NTIKUMA_TEST_LOG"; fi\n'
+        cli = f'#!/bin/sh\nif [ "$1" = version ]; then echo {WAILS_VERSION} >&2; else echo "wails $*" >> "$NTIKUMA_TEST_LOG"; fi\n'
         executable(self.fakebin / "wails3", cli)
         executable(self.fakebin / "go", '#!/bin/sh\necho "go $*" >> "$NTIKUMA_TEST_LOG"\n')
         files = [repo / "Taskfile.yml", repo / "build/config.yml", repo / "build/linux/Taskfile.yml"]
@@ -274,7 +276,7 @@ p.write_text(json.dumps(state))
         executable(self.fakebin / "npm", "#!/bin/sh\nexit 0\n")
         executable(self.fakebin / "wails3", "#!/bin/sh\necho old-version\n")
         cli = self.base / "cli-template"
-        executable(cli, '#!/bin/sh\nif [ "$1" = version ]; then echo v3.0.0-beta.28; fi\n')
+        executable(cli, f'#!/bin/sh\nif [ "$1" = version ]; then echo {WAILS_VERSION}; fi\n')
         destination = self.base / "installed tools"
         executable(self.fakebin / "go", '''#!/bin/sh
 if [ "$1" = install ]; then
@@ -289,14 +291,14 @@ fi
             "NTIKUMA_TEST_GOBIN": str(destination), "NTIKUMA_TEST_CLI_TEMPLATE": str(cli)})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((destination / "wails3").exists())
-        self.assertIn("github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.28", self.log.read_text())
+        self.assertIn("github.com/wailsapp/wails/v3/cmd/wails3@" + WAILS_VERSION, self.log.read_text())
 
     def test_bootstrap_regenerates_ignored_build_directory_without_touching_source(self):
         real_cli = shutil.which("wails3", path=os.environ["PATH"])
         if not real_cli:
             self.skipTest("Wails CLI is not installed")
         version = subprocess.run([real_cli, "version"], text=True, capture_output=True, check=True)
-        if (version.stdout + version.stderr).strip() != "v3.0.0-beta.28":
+        if (version.stdout + version.stderr).strip() != WAILS_VERSION:
             self.skipTest("The pinned Wails CLI is required for the regeneration test")
         repo = self.bootstrap_checkout(with_build=False)
         sentinel = repo / "application-source.txt"
