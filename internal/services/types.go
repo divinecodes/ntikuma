@@ -34,6 +34,12 @@ type Clipboard interface {
 	Text() (string, bool)
 }
 
+// secretMarker is a clipboard that can tell when a password manager marked the
+// copied data as secret. platform.Clipboard satisfies it.
+type secretMarker interface {
+	MarkedSecret() bool
+}
+
 // KeyStore holds the OpenRouter key. secrets.Keyring satisfies it.
 type KeyStore interface {
 	APIKey() (string, error)

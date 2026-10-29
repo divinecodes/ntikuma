@@ -111,7 +111,7 @@ func main() {
 	app.RegisterService(application.NewService(services.NewHistoryService(db)))
 	app.RegisterService(application.NewService(services.NewSettingsService(cfg, keys, popup.ChooseFolder)))
 	app.RegisterService(application.NewService(services.NewVoiceService(cfg, filepath.Join(paths.CacheDir, "voice"), app.Event, popup.ChooseModelFolder)))
-	contextService := services.NewContextService(cfg, app.Clipboard, popup.CaptureScreenshot, platform.NewSelectionReader(application.InvokeSync))
+	contextService := services.NewContextService(cfg, platform.NewClipboard(app.Clipboard, application.InvokeSync), popup.CaptureScreenshot, platform.NewSelectionReader(application.InvokeSync))
 	app.RegisterService(application.NewService(contextService))
 	popup.prepareSelection = func() *services.SelectionCapture {
 		if !cfg.Get().AttachSelection || !contextService.SelectionStatus().BeforeFocus {

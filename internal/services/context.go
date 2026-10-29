@@ -55,13 +55,17 @@ type ClipboardCapture struct {
 }
 
 // AutoClipboard is the capture made when the popup opens, before anyone asks.
-// Text that looks like a password, token or private key is held back, since it
-// would otherwise go to OpenRouter on the next question. Clipboard still
-// attaches it when the user adds the clipboard themselves.
+// Text a password manager marked as secret, or that looks like a password,
+// token or private key, is held back, since it would otherwise go to OpenRouter
+// on the next question. Clipboard still attaches it when the user adds the
+// clipboard themselves.
 func (c *ContextService) AutoClipboard() (ClipboardCapture, error) {
 	a, err := c.Clipboard()
 	if err != nil || a == nil {
 		return ClipboardCapture{}, err
+	}
+	if marker, ok := c.clipboard.(secretMarker); ok && marker.MarkedSecret() {
+		return ClipboardCapture{Message: "A password manager marked the clipboard as secret, so it wasn't attached. Choose Clipboard to attach it anyway."}, nil
 	}
 	if looksSecret(a.Content) {
 		return ClipboardCapture{Message: "The clipboard looks like a password or key, so it wasn't attached. Choose Clipboard to attach it anyway."}, nil
