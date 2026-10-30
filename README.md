@@ -242,6 +242,7 @@ While a provider is active, edit its name, address, key and context window under
 - **Web search** is an OpenRouter feature; the Web pill is off while a direct provider is active.
 - **Screenshots** are sent as they are; a model that can't read images returns an error.
 - **Anthropic** uses the Messages API (`anthropic-version: 2026-10-21`) with a 32,000-token answer limit, thinking included.
+- **OpenAI** uses the Responses API, because its current models can't call tools over Chat Completions while they reason. Each model keeps its default reasoning effort. Requests are sent with `store: false`, so OpenAI doesn't keep the response for later requests; an OpenAI provider added before this change switches over on its own.
 - **DeepSeek, Kimi** and similar providers return their reasoning with each answer. While Local tools are on, it's saved with the answer and sent back to the same provider, which DeepSeek requires. See [Privacy](PRIVACY.md).
 - Answers from a direct provider say which one answered, in the chat and in History.
 

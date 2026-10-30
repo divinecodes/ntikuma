@@ -18,7 +18,7 @@ A direct provider gets the same data OpenRouter would: the question, the chat's 
 
 A server on this computer doesn't keep a question on this computer by itself. Ollama, for example, runs its cloud models on Ollama's servers. To keep questions local with Ollama, use local models and turn off its cloud features (`OLLAMA_NO_CLOUD=1`, or `"disable_ollama_cloud": true` in `~/.ollama/server.json`; see [Ollama's FAQ](https://github.com/ollama/ollama/blob/main/docs/faq.mdx)).
 
-DeepSeek and some similar providers return their reasoning with an answer (`reasoning_content`) and require it back on later requests that offer tools. Ntikuma saves up to 32 KiB of it with the answer in the local database, and sends it back only to the provider that wrote it and only while Local tools are on. It isn't shown in the app. Anthropic's thinking blocks are sent back within one answer's tool steps and never saved. History notes which direct provider answered.
+DeepSeek and some similar providers return their reasoning with an answer (`reasoning_content`) and require it back on later requests that offer tools. Ntikuma saves up to 32 KiB of it with the answer in the local database, and sends it back only to the provider that wrote it and only while Local tools are on. It isn't shown in the app. Anthropic's thinking blocks, and OpenAI's encrypted reasoning, are sent back within one answer's tool steps and never saved. OpenAI requests ask it not to store the response (`store: false`); OpenAI's own retention policy for abuse monitoring still applies. History notes which direct provider answered.
 
 ## Clipboard and screenshots
 

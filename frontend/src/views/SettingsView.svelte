@@ -159,7 +159,7 @@
       <div class="list">
         <div class="row">
           <div class="text"><label for="default-model">Default model</label><small>{modelName(target.defaultModel)}</small></div>
-          <input id="default-model" class="field" list={active ? "connection-models" : "models"} placeholder={active ? `Model ID, e.g. ${active.kind === "anthropic" ? "claude-opus-5-5" : "llama3.3"}` : ""} bind:value={target.defaultModel} oninput={changed} />
+          <input id="default-model" class="field" list={active ? "connection-models" : "models"} placeholder={active ? `Model ID, e.g. ${active.kind === "anthropic" ? "claude-opus-5-5" : active.kind === "openai" ? "gpt-6.1-sol" : "llama3.3"}` : ""} bind:value={target.defaultModel} oninput={changed} />
         </div>
         {#each target.fallbacks as f, i (i)}
           <div class="row">

@@ -161,7 +161,7 @@ export interface VoiceLevelEvent {
 
 export interface Connection {
     id: string;
-    kind: "openai-compatible" | "anthropic";
+    kind: "openai-compatible" | "anthropic" | "openai";
     name: string;
     baseUrl: string;
     defaultModel: string;

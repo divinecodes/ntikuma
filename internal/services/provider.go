@@ -8,6 +8,7 @@ import (
 
 	"ntikuma/internal/anthropic"
 	"ntikuma/internal/config"
+	"ntikuma/internal/openai"
 	"ntikuma/internal/openrouter"
 )
 
@@ -22,6 +23,11 @@ type endpoint struct {
 func newClient(ep endpoint) LLM {
 	if ep.connection != nil && ep.connection.Kind == config.KindAnthropic {
 		client := anthropic.New(ep.connection.BaseURL, ep.key)
+		client.MaxTokens = ep.connection.MaxTokens
+		return client
+	}
+	if ep.connection != nil && ep.connection.Kind == config.KindOpenAI {
+		client := openai.New(ep.connection.BaseURL, ep.key)
 		client.MaxTokens = ep.connection.MaxTokens
 		return client
 	}

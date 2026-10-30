@@ -311,6 +311,7 @@ func Load(path string) (*Manager, error) {
 	if err := m.cur.WebSearch.validate(); err != nil {
 		return nil, fmt.Errorf("invalid web search settings in %s: %w", path, err)
 	}
+	migrateConnections(m.cur.Connections)
 	if err := validateConnections(m.cur.Connections); err != nil {
 		return nil, fmt.Errorf("invalid provider connections in %s: %w", path, err)
 	}

@@ -19,6 +19,7 @@ const ProviderOpenRouter = "openrouter"
 const (
 	KindOpenAICompatible = "openai-compatible"
 	KindAnthropic        = "anthropic"
+	KindOpenAI           = "openai" // OpenAI's Responses API
 )
 
 const maxConnections = 8
@@ -34,13 +35,13 @@ type Connection struct {
 	DefaultModel  string   `json:"defaultModel"`
 	Fallbacks     []string `json:"fallbacks"`
 	ContextTokens int      `json:"contextTokens"` // 0 when unknown
-	MaxTokens     int      `json:"maxTokens"`     // Anthropic answer limit; 0 uses the default
+	MaxTokens     int      `json:"maxTokens"`     // Anthropic and OpenAI answer limit; 0 uses the default
 }
 
 // Presets are starting points for new connections; they get an ID when added.
 func Presets() []Connection {
 	return []Connection{
-		{Kind: KindOpenAICompatible, Name: "OpenAI", BaseURL: "https://api.openai.com/v1"},
+		{Kind: KindOpenAI, Name: "OpenAI", BaseURL: "https://api.openai.com/v1"},
 		{Kind: KindAnthropic, Name: "Anthropic", BaseURL: "https://api.anthropic.com"},
 		// Ollama's default window depends on VRAM; 4096 is its smallest.
 		{Kind: KindOpenAICompatible, Name: "Ollama", BaseURL: "http://localhost:11434/v1", ContextTokens: 4096},
@@ -138,6 +139,17 @@ func validateBaseURL(raw string) error {
 	return nil
 }
 
+// migrateConnections moves OpenAI connections added before the Responses
+// adapter onto it: current OpenAI models can't call tools over Chat
+// Completions. The address, and so the key's origin, stays the same.
+func migrateConnections(connections []Connection) {
+	for i, c := range connections {
+		if origin, err := Origin(c.BaseURL); err == nil && c.Kind == KindOpenAICompatible && origin == "https://api.openai.com" {
+			connections[i].Kind = KindOpenAI
+		}
+	}
+}
+
 func validateConnections(connections []Connection) error {
 	if len(connections) > maxConnections {
 		return fmt.Errorf("keep at most %d provider connections", maxConnections)
@@ -148,7 +160,7 @@ func validateConnections(connections []Connection) error {
 			return fmt.Errorf("provider connection ID %q is missing, malformed or repeated", c.ID)
 		}
 		seen[c.ID] = true
-		if c.Kind != KindOpenAICompatible && c.Kind != KindAnthropic {
+		if c.Kind != KindOpenAICompatible && c.Kind != KindAnthropic && c.Kind != KindOpenAI {
 			return fmt.Errorf("unsupported provider type %q", c.Kind)
 		}
 		if name := strings.TrimSpace(c.Name); name == "" || utf8.RuneCountInString(name) > 64 || !utf8.ValidString(name) {

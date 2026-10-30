@@ -292,3 +292,40 @@ func TestLocalConnectionsNeedAContextWindowToBeActive(t *testing.T) {
 		t.Errorf("Anthropic presets %+v", anthropic)
 	}
 }
+
+func TestOpenAIConnectionsMoveToTheResponsesAPI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	saved := `{"provider":"c-000000000001","connections":[` +
+		`{"id":"c-000000000001","kind":"openai-compatible","name":"OpenAI","baseUrl":"https://API.openai.com/v1","defaultModel":"gpt-6.1-sol"},` +
+		`{"id":"c-000000000002","kind":"openai-compatible","name":"Proxy","baseUrl":"https://api.openai.com.example.net/v1"},` +
+		`{"id":"c-000000000003","kind":"openai-compatible","name":"Kimi","baseUrl":"https://api.moonshot.ai/v1"}]}`
+	if err := os.WriteFile(path, []byte(saved), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kinds []string
+	for _, c := range m.Get().Connections {
+		kinds = append(kinds, c.Kind)
+	}
+	if !reflect.DeepEqual(kinds, []string{KindOpenAI, KindOpenAICompatible, KindOpenAICompatible}) {
+		t.Fatalf("kinds %v", kinds)
+	}
+	// The address, and so the key's origin, is unchanged.
+	if got := m.Get().Connections[0].BaseURL; got != "https://API.openai.com/v1" {
+		t.Fatalf("address %q", got)
+	}
+	if err := m.Save(m.Get()); err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(path); !strings.Contains(string(raw), `"kind": "openai"`) {
+		t.Fatalf("saved %s", raw)
+	}
+	for _, p := range Presets() {
+		if p.Name == "OpenAI" && p.Kind != KindOpenAI {
+			t.Fatalf("OpenAI preset is %s", p.Kind)
+		}
+	}
+}
