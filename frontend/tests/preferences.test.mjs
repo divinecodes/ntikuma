@@ -6,6 +6,10 @@ import ts from "typescript";
 import { compileModule } from "svelte/compiler";
 
 registerHooks({
+    resolve(specifier, context, next) {
+        if (specifier === "./providers") return { url: new URL("../src/lib/providers.ts", import.meta.url).href, shortCircuit: true };
+        return next(specifier, context);
+    },
     load(url, context, next) {
         if (new URL(url).pathname.endsWith("preferences.svelte.ts")) {
             const source = ts.transpileModule(readFileSync(new URL(url), "utf8"), {
@@ -72,6 +76,158 @@ test("provider connections survive editing unrelated preferences", async (t) => 
     const legacy = await setup(t);
     assert.equal(legacy.prefs.settings.provider, "");
     assert.deepEqual([...legacy.prefs.settings.connections], []);
+});
+
+const ollamaPreset = { id: "", kind: "openai-compatible", name: "Ollama", baseUrl: "http://localhost:11434/v1", defaultModel: "", fallbacks: null, contextTokens: 4096, maxTokens: 0 };
+
+// A backend that owns connection IDs and refuses saves whose list changed.
+function connectionBackend() {
+    const backend = { stored: { ...settings(), provider: "", connections: [] }, keys: {}, saves: [], adds: 0, removes: [], keyed: [], rejected: 0 };
+    const sameIds = (a, b) => a.length === b.length && a.every((c) => b.some((d) => d.id === c.id && d.kind === c.kind));
+    backend.actions = {
+        get: async () => structuredClone(backend.stored),
+        save: async (s) => {
+            if (!sameIds(s.connections, backend.stored.connections)) { backend.rejected++; throw new Error("providers changed since Preferences opened"); }
+            backend.saves.push(structuredClone(s));
+            backend.stored = structuredClone(s);
+        },
+        presets: async () => [ollamaPreset],
+        addConnection: async (c) => {
+            backend.adds++;
+            backend.stored.connections.push({ ...c, id: `c-00000000000${backend.adds}` });
+            return structuredClone(backend.stored);
+        },
+        removeConnection: async (id) => {
+            backend.removes.push(id);
+            backend.stored.connections = backend.stored.connections.filter((c) => c.id !== id);
+            return structuredClone(backend.stored);
+        },
+        hasConnectionKey: async (id) => Boolean(backend.keys[id]),
+        setConnectionKey: async (id, key) => {
+            const c = backend.stored.connections.find((c) => c.id === id);
+            backend.keyed.push({ id, key, baseUrl: c.baseUrl });
+            backend.keys[id] = key;
+        },
+    };
+    return backend;
+}
+
+test("adding a provider selects it and its models replace OpenRouter's", async (t) => {
+    const backend = connectionBackend();
+    const { prefs } = await setup(t, backend.actions);
+    assert.deepEqual(prefs.presets.map((p) => p.name), ["Ollama"]);
+    prefs.settings.systemPrompt = "Unsaved edit";
+    prefs.changed(10_000);
+    await prefs.addConnection(prefs.presets[0]);
+    assert.equal(backend.saves[0].systemPrompt, "Unsaved edit", "pending edits are saved before the add");
+    const ollama = prefs.settings.connections[0];
+    assert.equal(ollama.id, "c-000000000001");
+    assert.equal(prefs.settings.provider, ollama.id);
+    assert.equal(prefs.modelTarget, ollama);
+    await prefs.flush();
+    assert.equal(prefs.error, "Pick a default model.");
+    prefs.modelTarget.defaultModel = " llama3.3 ";
+    prefs.changed(0);
+    await prefs.flush();
+    const saved = backend.saves.at(-1);
+    assert.equal(saved.provider, ollama.id);
+    assert.equal(saved.connections[0].defaultModel, "llama3.3");
+    assert.equal(saved.defaultModel, "test/model", "OpenRouter's model is kept");
+
+    prefs.setProvider("openrouter");
+    assert.equal(prefs.modelTarget, prefs.settings);
+    await prefs.flush();
+    assert.equal(backend.saves.at(-1).provider, "openrouter");
+});
+
+test("an edit made while a provider is being added saves with the new list", async (t) => {
+    const backend = connectionBackend();
+    let release;
+    const add = backend.actions.addConnection;
+    const { prefs } = await setup(t, { ...backend.actions, addConnection: (c) => { const result = add(c); return new Promise((resolve) => { release = () => resolve(result); }); } });
+    const adding = prefs.addConnection(ollamaPreset);
+    await settle();
+    prefs.settings.systemPrompt = "Typed during the add";
+    prefs.changed(0);
+    await prefs.flush();
+    release();
+    await adding;
+    await prefs.flush();
+    prefs.modelTarget.defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    const saved = backend.saves.at(-1);
+    assert.equal(saved.systemPrompt, "Typed during the add");
+    assert.equal(saved.connections.length, 1);
+    assert.equal(backend.rejected, 0, "no save went out with the old list");
+});
+
+test("removing a provider leaves no stale list to save, and the active one stays", async (t) => {
+    const backend = connectionBackend();
+    const { prefs } = await setup(t, backend.actions);
+    await prefs.addConnection(ollamaPreset);
+    await prefs.addConnection(ollamaPreset);
+    assert.equal(prefs.settings.connections.length, 1, "an unfinished provider must be fixed first");
+    assert.match(prefs.connectionError, /Fix the error/);
+    prefs.settings.connections[0].defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.addConnection(ollamaPreset);
+    prefs.settings.connections[1].defaultModel = "qwen3";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    const [first, second] = prefs.settings.connections;
+    await prefs.removeConnection(second.id);
+    assert.deepEqual(backend.removes, [], "the active provider can't be removed");
+    prefs.setProvider("openrouter");
+    await prefs.removeConnection(second.id);
+    assert.deepEqual(backend.removes, [second.id]);
+    assert.deepEqual(prefs.settings.connections.map((c) => c.id), [first.id]);
+    prefs.settings.systemPrompt = "After remove";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    assert.equal(backend.saves.at(-1).systemPrompt, "After remove");
+});
+
+test("a provider key is saved after its address, so it binds to the new one", async (t) => {
+    const backend = connectionBackend();
+    const { prefs, calls } = await setup(t, backend.actions);
+    await prefs.addConnection(ollamaPreset);
+    const ollama = prefs.settings.connections[0];
+    ollama.defaultModel = "llama3.3";
+    ollama.baseUrl = "https://ollama.example.com/v1";
+    prefs.connectionChanged(10_000);
+    assert.equal(prefs.connectionHasKey, false);
+    prefs.connectionKeyInput = " fake-test-key ";
+    await prefs.saveConnectionKey();
+    assert.deepEqual(backend.keyed, [{ id: ollama.id, key: "fake-test-key", baseUrl: "https://ollama.example.com/v1" }]);
+    assert.equal(prefs.connectionHasKey, true);
+    assert.equal(prefs.connectionKeyInput, "");
+
+    // An address change that can't be saved holds the key back.
+    ollama.defaultModel = "";
+    prefs.connectionChanged(10_000);
+    prefs.connectionKeyInput = "fake-other-key";
+    await prefs.saveConnectionKey();
+    assert.equal(backend.keyed.length, 1);
+    assert.equal(prefs.connectionKeyInput, "fake-other-key");
+    assert.ok(prefs.connectionError);
+    void calls;
+});
+
+test("a late key status for another provider is ignored", async (t) => {
+    const backend = connectionBackend();
+    let release;
+    const { prefs } = await setup(t, { ...backend.actions, hasConnectionKey: (id) => id === "c-000000000001" ? new Promise((resolve) => { release = () => resolve(true); }) : Promise.resolve(false) });
+    await prefs.addConnection(ollamaPreset);
+    const pending = prefs.refreshConnectionKey();
+    prefs.setProvider("openrouter");
+    await prefs.refreshConnectionKey();
+    release?.();
+    await pending;
+    assert.equal(prefs.connectionHasKey, false);
 });
 
 test("local tools fail closed for missing or explicitly empty roots and preserve the shell flag", async (t) => {

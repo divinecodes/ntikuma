@@ -1,13 +1,13 @@
 <script lang="ts">
     import { app } from "../lib/state.svelte"
     import { modelName } from "../lib/format"
+    import { activeDefaultModel, activeModels } from "../lib/providers"
     import Icon from "./Icon.svelte"
 
-    //Defautl plus fallbacks
-    const options = $derived(
-        app.settings ? [...new Set([app.settings.defaultModel, ...app.settings.fallbacks].filter(Boolean))] : [],
-    );
-    const current = $derived(app.modelOverride || app.settings?.defaultModel || "");
+    // The active provider's default plus fallbacks
+    const options = $derived(activeModels(app.settings));
+    const defaultModel = $derived(activeDefaultModel(app.settings));
+    const current = $derived(app.modelOverride || defaultModel);
 </script>
 <label class="picker">
     <span class="sr-only">Model</span>
@@ -17,11 +17,11 @@
             value={current}
             onchange={(e) => {
       const v = (e.currentTarget as HTMLSelectElement).value;
-      app.modelOverride = v === app.settings?.defaultModel ? "" : v;
+      app.modelOverride = v === defaultModel ? "" : v;
     }}
     >
         {#each options as m (m)}
-            <option value={m}>{modelName(m)}{m === app.settings?.defaultModel ? " (default)" : ""}</option>
+            <option value={m}>{modelName(m)}{m === defaultModel ? " (default)" : ""}</option>
         {/each}
     </select>
 </label>

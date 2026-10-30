@@ -208,3 +208,11 @@ export interface UIMessage {
     activity?: ToolActivity[];
 }
 
+
+export interface ProviderStatus {
+    id: string;
+    name: string;
+    needsKey: boolean;
+    hasKey: boolean;
+    web: boolean;
+}

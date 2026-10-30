@@ -6,8 +6,10 @@ import ts from "typescript";
 import { compileModule } from "svelte/compiler";
 
 const api = new URL("../src/lib/api.ts", import.meta.url).href;
+const providers = new URL("../src/lib/providers.ts", import.meta.url).href;
 registerHooks({
     resolve(specifier, context, next) {
+        if (specifier === "./providers") return { url: providers, shortCircuit: true };
         if (specifier === "./api" && context.parentURL && new URL(context.parentURL).pathname.endsWith("state.svelte.ts")) {
             return { url: api, shortCircuit: true };
         }
@@ -26,7 +28,7 @@ registerHooks({
                 };
                 export const historyApi = { recent: async () => h.recent, get: async (id) => h.detail(id) };
                 export const popupApi = { hide: async () => { h.hides++; } };
-                export const prefsApi = { get: async () => ({ attachClipboard: true }), hasKey: async () => true };
+                export const prefsApi = { get: async () => h.settings ?? ({ attachClipboard: true }), hasKey: async () => true, providerStatus: () => h.providerStatus() };
                 export const errorText = (e) => e.message ?? String(e);
                 export const events = Object.fromEntries(["open", "focus", "hidden", "delta", "done", "error", "tool", "approval"].map((name) => [name, (fn) => { h.handlers[name] = fn; }]));
             ` };
@@ -54,11 +56,74 @@ async function fresh() {
     h.selection = async () => ({ attachment: null, message: "No selected text" });
     h.clipboard = async () => ({ kind: "clipboard", label: "Clipboard", content: "copied" });
     h.autoClipboard = null;
+    h.settings = null;
+    h.providerStatus = async () => ({ id: "openrouter", name: "OpenRouter", needsKey: true, hasKey: true, web: true });
     const { app } = await import(`../src/lib/state.svelte.ts?test=${instance++}`);
     await app.init();
     return app;
 }
 const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+const ollamaStatus = { id: "c-0123456789ab", name: "Ollama", needsKey: false, hasKey: false, web: false };
+const withOllama = (provider) => ({
+    attachClipboard: false, defaultModel: "openrouter/default", fallbacks: ["openrouter/fallback"], provider,
+    connections: [{ id: "c-0123456789ab", kind: "openai-compatible", name: "Ollama", baseUrl: "http://localhost:11434/v1", defaultModel: "llama3.3", fallbacks: ["qwen3"], contextTokens: 4096, maxTokens: 0 }],
+});
+
+test("the active provider decides whether a key is needed, and Web is OpenRouter's", async () => {
+    h.providerStatus = async () => ollamaStatus;
+    const app = await fresh();
+    h.providerStatus = async () => ollamaStatus;
+    await app.refreshProvider();
+    const requests = [];
+    h.send = async (req) => { requests.push(req); return { chatId: "c", messageId: `m${requests.length}`, title: "t" }; };
+    assert.equal(app.web, true);
+    assert.equal(app.webAvailable, false);
+    app.input = "Local question";
+    await app.send();
+    assert.equal(requests.length, 1, app.error);
+    assert.equal(requests[0].web, false);
+    assert.equal(app.searchingWeb, false);
+    app.toggleWeb();
+    assert.equal(app.web, true, "Ctrl+G does nothing without web search");
+    h.handlers.done({ chatId: "c", messageId: "m1" });
+
+    h.providerStatus = async () => ({ id: "c-ba9876543210", name: "OpenAI", needsKey: true, hasKey: false, web: false });
+    await app.refreshProvider();
+    app.input = "Remote question";
+    await app.send();
+    assert.equal(requests.length, 1);
+    assert.equal(app.error, "Add your OpenAI key in Preferences first");
+    assert.equal(app.input, "Remote question");
+});
+
+test("provider status that arrives late can't replace a newer one", async () => {
+    const app = await fresh();
+    let release;
+    h.providerStatus = () => new Promise((resolve) => { release = () => resolve({ ...ollamaStatus, name: "Stale" }); });
+    const stale = app.refreshProvider();
+    h.providerStatus = async () => ollamaStatus;
+    await app.refreshProvider();
+    release();
+    await stale;
+    assert.equal(app.providerName, "Ollama");
+    assert.equal(app.hasKey, true);
+});
+
+test("a model override from another provider is cleared when the provider changes", async () => {
+    h.settings = withOllama("");
+    const app = await fresh();
+    app.modelOverride = "openrouter/fallback";
+    app.applySettings(withOllama(""));
+    assert.equal(app.modelOverride, "openrouter/fallback", "still offered, so kept");
+    app.applySettings(withOllama("c-0123456789ab"));
+    assert.equal(app.modelOverride, "");
+    app.modelOverride = "qwen3";
+    app.applySettings(withOllama("c-0123456789ab"));
+    assert.equal(app.modelOverride, "qwen3");
+    app.applySettings(withOllama("openrouter"));
+    assert.equal(app.modelOverride, "");
+});
 
 test("Web defaults on and preserves the user's selection across sends and new chats", async () => {
     const app = await fresh();

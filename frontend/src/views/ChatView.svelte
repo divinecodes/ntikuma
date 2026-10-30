@@ -6,6 +6,7 @@
     import Icon from "../components/Icon.svelte";
     import Chips from "../components/Chips.svelte";
     import ModelPicker from "../components/ModelPicker.svelte";
+    import { activeDefaultModel } from "../lib/providers";
     import WebToggle from "../components/WebToggle.svelte";
     import Sources from "../components/Sources.svelte";
     import ToolActivity from "../components/ToolActivity.svelte";
@@ -44,7 +45,7 @@
         }
     }
 
-    const  streamingModel = $derived(app.modelOverride || app.settings?.defaultModel || "");
+    const  streamingModel = $derived(app.modelOverride || activeDefaultModel(app.settings));
     const lastId = $derived(app.messages[app.messages.length - 1]?.id);
 </script>
 
