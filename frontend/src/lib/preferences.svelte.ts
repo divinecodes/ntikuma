@@ -24,6 +24,10 @@ interface PreferenceActions {
 }
 
 const connections = (list: Connection[] | null | undefined) => (list ?? []).map((c) => ({ ...c, fallbacks: [...(c.fallbacks ?? [])] }));
+// The backend's list after an add or remove, keeping the local drafts of
+// connections that are still there: they may hold edits made while it ran.
+const mergeConnections = (local: Connection[], next: Connection[] | null | undefined) =>
+    connections(next).map((n) => local.find((c) => c.id === n.id) ?? n);
 
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
 
@@ -215,7 +219,7 @@ export class Preferences {
             const next = await this.actions.addConnection({ ...$state.snapshot(preset) as Connection, id: "" });
             if (this.disposed || this.settings !== settings) return;
             const before = new Set(settings.connections.map((c) => c.id));
-            settings.connections = connections(next.connections);
+            settings.connections = mergeConnections(settings.connections, next.connections);
             const added = settings.connections.find((c) => !before.has(c.id));
             this.status = `${preset.name} added`;
             if (added) this.setProvider(added.id);
@@ -237,7 +241,7 @@ export class Preferences {
         try {
             const next = await this.actions.removeConnection(id);
             if (this.disposed || this.settings !== settings) return;
-            settings.connections = connections(next.connections);
+            settings.connections = mergeConnections(settings.connections, next.connections);
             this.status = "Provider removed";
         } catch (e) {
             if (!this.disposed) this.connectionError = message(e);

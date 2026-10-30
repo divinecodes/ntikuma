@@ -216,6 +216,65 @@ test("an edit made while a provider is being added saves with the new list", asy
     assert.equal(backend.rejected, 0, "no save went out with the old list");
 });
 
+// Holds one backend action open until release() is called.
+function held(action) {
+    const gate = deferred();
+    return { release: gate.resolve, action: async (...args) => { await gate.promise; return action(...args); } };
+}
+
+test("an edit to the active provider made while another is removed is kept", async (t) => {
+    const backend = connectionBackend();
+    const removal = held(backend.actions.removeConnection);
+    const { prefs } = await setup(t, { ...backend.actions, removeConnection: removal.action });
+    await prefs.addConnection(ollamaPreset);
+    prefs.settings.connections[0].defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.addConnection(ollamaPreset);
+    prefs.settings.connections[1].defaultModel = "qwen3";
+    prefs.changed(0);
+    const [first, second] = prefs.settings.connections;
+    prefs.setProvider(first.id);
+    await prefs.flush();
+    const removing = prefs.removeConnection(second.id);
+    await settle();
+    prefs.active.defaultModel = "llama4";
+    prefs.active.fallbacks.push("qwen3");
+    prefs.changed(0);
+    await prefs.flush();
+    removal.release();
+    await removing;
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    assert.deepEqual(prefs.settings.connections.map((c) => [c.id, c.defaultModel, [...c.fallbacks]]), [[first.id, "llama4", ["qwen3"]]]);
+    assert.equal(backend.saves.at(-1).connections[0].defaultModel, "llama4");
+    assert.deepEqual(backend.saves.at(-1).connections[0].fallbacks, ["qwen3"]);
+});
+
+test("an edit to the active provider made while another is added is kept", async (t) => {
+    const backend = connectionBackend();
+    const addition = held(backend.actions.addConnection);
+    const { prefs } = await setup(t, { ...backend.actions, addConnection: (c) => backend.adds ? addition.action(c) : backend.actions.addConnection(c) });
+    await prefs.addConnection(ollamaPreset);
+    prefs.settings.connections[0].defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.flush();
+    const first = prefs.settings.connections[0];
+    const adding = prefs.addConnection(ollamaPreset);
+    await settle();
+    prefs.active.contextTokens = 32768;
+    prefs.changed(0);
+    await prefs.flush();
+    addition.release();
+    await adding;
+    assert.notEqual(prefs.active.id, first.id, "the new provider becomes active");
+    prefs.modelTarget.defaultModel = "qwen3";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    assert.equal(prefs.settings.connections.find((c) => c.id === first.id).contextTokens, 32768);
+    assert.equal(backend.saves.at(-1).connections.find((c) => c.id === first.id).contextTokens, 32768);
+});
+
 test("removing a provider leaves no stale list to save, and the active one stays", async (t) => {
     const backend = connectionBackend();
     const { prefs } = await setup(t, backend.actions);
