@@ -321,15 +321,14 @@ func TestConnectionModelsAreSuggestedFromTheProvider(t *testing.T) {
 	}
 }
 
-func TestConnectionModelsFailWithoutAKeyItNeeds(t *testing.T) {
+// A missing key is shown beside the key field, so it isn't a failure here:
+// Wails would log it as one every time Preferences opens.
+func TestConnectionModelsAreEmptyWithoutAKeyItNeeds(t *testing.T) {
+	// The address can't resolve, so asking the provider would fail.
 	d := newDirect(t, config.Connection{Kind: config.KindOpenAICompatible, Name: "Remote", BaseURL: "https://api.example.invalid/v1", DefaultModel: "m"}, "")
-	_, err := d.settings.ConnectionModels(d.conn.ID)
-	if err == nil || !strings.Contains(err.Error(), "Remote") {
-		t.Fatalf("err %v", err)
-	}
-	var apiErr *openrouter.APIError
-	if errors.As(err, &apiErr) {
-		t.Fatal("asked the provider without a key")
+	models, err := d.settings.ConnectionModels(d.conn.ID)
+	if err != nil || len(models) != 0 {
+		t.Fatalf("models %v, err %v", models, err)
 	}
 }
 

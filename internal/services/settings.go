@@ -233,7 +233,9 @@ func (s *SettingsService) ConnectionModels(id string) ([]openrouter.ModelInfo, e
 		return nil, fmt.Errorf("couldn't read the keyring: %w", err)
 	}
 	if key == "" && conn.NeedsKey() {
-		return nil, fmt.Errorf("add your %s key to list its models", conn.Name)
+		// The key field already says it's missing; an error here would only
+		// be logged.
+		return nil, nil
 	}
 	var lister interface {
 		Models(context.Context) ([]openrouter.ModelInfo, error)

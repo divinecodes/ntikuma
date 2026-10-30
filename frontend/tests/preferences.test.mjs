@@ -180,11 +180,11 @@ test("a direct provider suggests its own models and takes fallbacks", async (t) 
 
 test("a provider that can't list its models leaves typing working", async (t) => {
     const backend = connectionBackend();
-    backend.actions.connectionModels = async () => { throw new Error("add your Ollama key to list its models"); };
+    backend.actions.connectionModels = async () => { throw new Error("Ollama isn't running"); };
     const { prefs } = await setup(t, backend.actions);
     await prefs.addConnection(ollamaPreset);
     await settle();
-    assert.equal(prefs.connectionModelsError, "add your Ollama key to list its models");
+    assert.equal(prefs.connectionModelsError, "Ollama isn't running");
     assert.deepEqual(prefs.connectionModels, []);
     prefs.modelTarget.defaultModel = "llama3.3";
     prefs.changed(0);
