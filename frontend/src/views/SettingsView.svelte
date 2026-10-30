@@ -59,6 +59,11 @@
     <option value={m.id}>{m.name}</option>
   {/each}
 </datalist>
+<datalist id="connection-models">
+  {#each prefs.connectionModels as m (m.id)}
+    <option value={m.id}>{m.name}</option>
+  {/each}
+</datalist>
 
 <div class="scroll">
   {#if prefs.loading}<p role="status">Loading preferences...</p>{/if}
@@ -133,19 +138,20 @@
 
     <section>
       <h2>Models</h2>
-      <p class="desc">{active ? `Every chat starts on ${active.name}'s default model.` : "Every chat starts on the default. Fallbacks are tried in order when it's down, rate-limited or refuses."}</p>
-      {#if prefs.modelsLoading}<p class="desc" role="status">Loading model suggestions...</p>{/if}
-      {#if prefs.modelsError}
+      <p class="desc">{active ? `Every chat starts on ${active.name}'s default model. Fallbacks are tried in order when it's down, rate-limited or doesn't have the model.` : "Every chat starts on the default. Fallbacks are tried in order when it's down, rate-limited or refuses."}</p>
+      {#if active && prefs.connectionModelsError}
+        <p class="desc">No model suggestions from {active.name}: {prefs.connectionModelsError}. You can still enter a model ID.</p>
+      {/if}
+      {#if !active && prefs.modelsLoading}<p class="desc" role="status">Loading model suggestions...</p>{/if}
+      {#if !active && prefs.modelsError}
         <p class="error" role="alert">Couldn't load model suggestions: {prefs.modelsError}. You can still enter a model ID.</p>
         <button type="button" class="btn" onclick={() => prefs.loadModels()}>Retry model suggestions</button>
       {/if}
       <div class="list">
         <div class="row">
           <div class="text"><label for="default-model">Default model</label><small>{modelName(target.defaultModel)}</small></div>
-          <input id="default-model" class="field" list={active ? undefined : "models"} placeholder={active ? "Model ID, e.g. llama3.3" : ""} bind:value={target.defaultModel} oninput={changed} />
+          <input id="default-model" class="field" list={active ? "connection-models" : "models"} placeholder={active ? "Model ID, e.g. llama3.3" : ""} bind:value={target.defaultModel} oninput={changed} />
         </div>
-        <!-- Direct providers get fallbacks once they're tried in order (next phase). -->
-        {#if !active}
         {#each target.fallbacks as f, i (i)}
           <div class="row">
             <span class="num">{i + 1}</span>
@@ -167,14 +173,13 @@
             <input
               id="add-fallback"
               class="field wide"
-              list="models"
-              placeholder="Add a fallback, e.g. openai/gpt-5.1"
+              list={active ? "connection-models" : "models"}
+              placeholder={active ? "Add a fallback model ID" : "Add a fallback, e.g. openai/gpt-5.1"}
               bind:value={newFallback}
               onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFallback(); } }}
             />
             <button type="button" class="btn" onclick={addFallback}><Icon name="plus" size={14} stroke={2.2} />Add</button>
           </div>
-        {/if}
         {/if}
       </div>
     </section>

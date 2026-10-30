@@ -140,6 +140,59 @@ test("adding a provider selects it and its models replace OpenRouter's", async (
     assert.equal(backend.saves.at(-1).provider, "openrouter");
 });
 
+test("a direct provider suggests its own models and takes fallbacks", async (t) => {
+    const backend = connectionBackend();
+    const lists = [];
+    backend.actions.connectionModels = (id) => { const d = deferred(); lists.push({ id, ...d }); return d.promise; };
+    const { prefs } = await setup(t, backend.actions);
+    await prefs.addConnection(ollamaPreset);
+    const ollama = prefs.settings.connections[0];
+    await settle();
+    lists.at(-1).resolve([{ id: "llama3.3", name: "" }]);
+    await settle();
+    assert.equal(lists.at(-1).id, ollama.id);
+    assert.deepEqual(prefs.connectionModels.map((m) => m.id), ["llama3.3"]);
+
+    // Fallbacks belong to the provider, not OpenRouter.
+    prefs.modelTarget.defaultModel = "llama3.3";
+    assert.equal(prefs.addFallback("qwen3"), true);
+    await prefs.flush();
+    assert.deepEqual(backend.saves.at(-1).connections[0].fallbacks, ["qwen3"]);
+    assert.deepEqual(backend.saves.at(-1).fallbacks, settings().fallbacks);
+
+    // A moved address drops the list until it's saved and asked again.
+    const asked = lists.length;
+    prefs.active.baseUrl = "http://127.0.0.1:11434/v1";
+    prefs.connectionChanged(10_000);
+    assert.deepEqual(prefs.connectionModels, []);
+    await prefs.flush();
+    await settle();
+    assert.ok(lists.length > asked, "asked again after the save");
+
+    // An answer for a provider no longer shown is ignored.
+    const late = lists.at(-1);
+    prefs.setProvider("openrouter");
+    late.resolve([{ id: "stale", name: "" }]);
+    await settle();
+    assert.deepEqual(prefs.connectionModels, []);
+
+});
+
+test("a provider that can't list its models leaves typing working", async (t) => {
+    const backend = connectionBackend();
+    backend.actions.connectionModels = async () => { throw new Error("add your Ollama key to list its models"); };
+    const { prefs } = await setup(t, backend.actions);
+    await prefs.addConnection(ollamaPreset);
+    await settle();
+    assert.equal(prefs.connectionModelsError, "add your Ollama key to list its models");
+    assert.deepEqual(prefs.connectionModels, []);
+    prefs.modelTarget.defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    assert.equal(backend.saves.at(-1).connections[0].defaultModel, "llama3.3");
+});
+
 test("an edit made while a provider is being added saves with the new list", async (t) => {
     const backend = connectionBackend();
     let release;

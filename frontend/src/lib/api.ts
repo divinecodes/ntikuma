@@ -55,6 +55,7 @@ export const prefsApi = {
     removeConnection: (id: string) => call<Settings>(`${services}.SettingsService.RemoveConnection`, id),
     hasConnectionKey: (id: string) => call<boolean>(`${services}.SettingsService.HasConnectionKey`, id),
     setConnectionKey: (id: string, key: string) => call<void>(`${services}.SettingsService.SetConnectionKey`, id, key),
+    connectionModels: (id: string) => call<ModelInfo[] | null>(`${services}.SettingsService.ConnectionModels`, id).then((r) => r ?? []),
     setKey: (key: string) => call<void>(`${services}.SettingsService.SetAPIKey`, key),
     models: () => call<ModelInfo[] | null>(`${services}.SettingsService.Models`).then((r) => r ?? []),
 };

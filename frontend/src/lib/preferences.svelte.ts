@@ -20,6 +20,7 @@ interface PreferenceActions {
     removeConnection?(id: string): Promise<Settings>;
     hasConnectionKey?(id: string): Promise<boolean>;
     setConnectionKey?(id: string, key: string): Promise<void>;
+    connectionModels?(id: string): Promise<ModelInfo[]>;
 }
 
 const connections = (list: Connection[] | null | undefined) => (list ?? []).map((c) => ({ ...c, fallbacks: [...(c.fallbacks ?? [])] }));
@@ -54,6 +55,8 @@ export class Preferences {
     connectionKeyInput = $state("");
     connectionHasKey = $state(false);
     connectionKeySaving = $state(false);
+    connectionModels = $state<ModelInfo[]>([]);
+    connectionModelsError = $state("");
 
     private version = 0;
     private savedVersion = 0;
@@ -64,6 +67,7 @@ export class Preferences {
     private toolVersion = 0;
     private toolPicker = 0;
     private connectionKeyVersion = 0;
+    private connectionModelsVersion = 0;
     private saveTimer: ReturnType<typeof setTimeout> | undefined;
     private clearTimer: ReturnType<typeof setTimeout> | undefined;
     private activeSave: Promise<void> | null = null;
@@ -156,14 +160,37 @@ export class Preferences {
         this.changed();
     }
 
-    // An edit to the active connection's address: its saved key may no longer apply.
+    // An edit to the active connection's address: its saved key and model
+    // list may no longer apply.
     connectionChanged(delay = 300) {
         this.connectionKeyVersion++;
         this.connectionHasKey = false;
+        this.connectionModelsVersion++;
+        this.connectionModels = [];
+        this.connectionModelsError = "";
         this.changed(delay);
     }
 
+    // Suggestions from the active provider's own list. A failure only
+    // explains why there are none; model IDs can still be typed.
+    async refreshConnectionModels() {
+        const id = this.active?.id;
+        const version = ++this.connectionModelsVersion;
+        this.connectionModelsError = "";
+        if (!id || !this.actions.connectionModels) { this.connectionModels = []; return; }
+        try {
+            const models = await this.actions.connectionModels(id);
+            if (!this.disposed && version === this.connectionModelsVersion) this.connectionModels = models;
+        } catch (e) {
+            if (!this.disposed && version === this.connectionModelsVersion) {
+                this.connectionModels = [];
+                this.connectionModelsError = message(e);
+            }
+        }
+    }
+
     async refreshConnectionKey() {
+        void this.refreshConnectionModels();
         const id = this.active?.id;
         const version = ++this.connectionKeyVersion;
         if (!id || !this.actions.hasConnectionKey) { this.connectionHasKey = false; return; }
