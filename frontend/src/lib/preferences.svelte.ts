@@ -71,6 +71,8 @@ export class Preferences {
             const [settings, hasKey] = await Promise.all([this.actions.get(), this.actions.hasKey()]);
             if (this.disposed || version !== this.loadVersion) return;
             this.settings = { ...settings, fallbacks: settings.fallbacks ?? [],
+                provider: settings.provider ?? "",
+                connections: (settings.connections ?? []).map((c) => ({ ...c, fallbacks: [...(c.fallbacks ?? [])] })),
                 localTools: settings.localTools ?? false,
                 toolRoots: [...(settings.toolRoots ?? [])],
                 allowHiddenFiles: settings.allowHiddenFiles ?? false,

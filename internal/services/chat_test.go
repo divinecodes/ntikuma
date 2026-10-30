@@ -105,8 +105,11 @@ func TestSelectedTextRespectsContextLimitAndSurvivesHistory(t *testing.T) {
 
 type fakeKeys struct{ key string }
 
-func (f fakeKeys) APIKey() (string, error) { return f.key, nil }
-func (f fakeKeys) SetAPIKey(string) error  { return nil }
+func (f fakeKeys) APIKey() (string, error)                       { return f.key, nil }
+func (f fakeKeys) SetAPIKey(string) error                        { return nil }
+func (f fakeKeys) ConnectionKey(string, string) (string, error)  { return "", nil }
+func (f fakeKeys) SetConnectionKey(string, string, string) error { return nil }
+func (f fakeKeys) DeleteConnectionKey(string) error              { return nil }
 
 type recorder struct {
 	mu     sync.Mutex

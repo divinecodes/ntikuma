@@ -13,6 +13,11 @@ import (
 )
 
 type Settings struct {
+	// Provider is where questions go: "" or "openrouter", or a Connection ID.
+	Provider    string       `json:"provider"`
+	Connections []Connection `json:"connections"`
+
+	// DefaultModel and Fallbacks are OpenRouter's. Each connection has its own.
 	DefaultModel string `json:"defaultModel"`
 
 	Fallbacks []string `json:"fallbacks"`
@@ -167,6 +172,12 @@ func (s Settings) Validate() error {
 	if err := validateToolRoots(s.ToolRoots); err != nil {
 		return err
 	}
+	if err := validateConnections(s.Connections); err != nil {
+		return err
+	}
+	if err := s.validateProvider(); err != nil {
+		return err
+	}
 	return s.WebSearch.validate()
 }
 
@@ -242,9 +253,10 @@ func (p Paths) Ensure() error {
 }
 
 type Manager struct {
-	path string
-	mu   sync.RWMutex
-	cur  Settings
+	path   string
+	saveMu sync.Mutex // serializes writes, so Update's read and write are one step
+	mu     sync.RWMutex
+	cur    Settings
 }
 
 // Load reads the settingts from path, filling anything missing from Defaults.
@@ -270,6 +282,9 @@ func Load(path string) (*Manager, error) {
 	if err := m.cur.WebSearch.validate(); err != nil {
 		return nil, fmt.Errorf("invalid web search settings in %s: %w", path, err)
 	}
+	if err := validateConnections(m.cur.Connections); err != nil {
+		return nil, fmt.Errorf("invalid provider connections in %s: %w", path, err)
+	}
 	return m, nil
 }
 
@@ -277,15 +292,41 @@ func Load(path string) (*Manager, error) {
 func (m *Manager) Get() Settings {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.cur
+	s := m.cur.clone()
 	s.Fallbacks = append([]string(nil), m.cur.Fallbacks...)
-	s.ToolRoots = slices.Clone(m.cur.ToolRoots)
+	return s
+}
+
+func (s Settings) clone() Settings {
+	s.Fallbacks = slices.Clone(s.Fallbacks)
+	s.ToolRoots = slices.Clone(s.ToolRoots)
+	s.Connections = cloneConnections(s.Connections)
 	return s
 }
 
 func (m *Manager) Save(s Settings) error {
-	s.Fallbacks = slices.Clone(s.Fallbacks)
-	s.ToolRoots = slices.Clone(s.ToolRoots)
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+	return m.save(s)
+}
+
+// Update saves change(current settings). No other save happens in between,
+// so a check in change still holds when the result is written.
+func (m *Manager) Update(change func(Settings) (Settings, error)) (Settings, error) {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+	s, err := change(m.Get())
+	if err != nil {
+		return Settings{}, err
+	}
+	if err := m.save(s); err != nil {
+		return Settings{}, err
+	}
+	return m.Get(), nil
+}
+
+func (m *Manager) save(s Settings) error {
+	s = s.clone()
 	s.Voice = s.Voice.Normalized()
 	if err := s.Validate(); err != nil {
 		return err

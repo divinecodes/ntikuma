@@ -65,15 +65,18 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 			}
 		}
 	}
-	key, err := s.keys.APIKey()
-	if err != nil {
-		return SendResult{}, fmt.Errorf("couldn't read the keyring: %w", err)
-	}
-	if key == "" {
-		return SendResult{}, errors.New("add your OpenRouter key in Preferences (Ctrl+,)")
-	}
-	ctx := context.Background()
+	// One snapshot decides where this answer goes and with which key.
 	settings := s.cfg.Get()
+	ep, err := s.resolveEndpoint(settings)
+	if err != nil {
+		return SendResult{}, err
+	}
+	if ep.connection != nil {
+		// Never send a question meant for another provider to OpenRouter.
+		return SendResult{}, fmt.Errorf("%s can't be used yet. Choose OpenRouter in Preferences", ep.name)
+	}
+	key := ep.key
+	ctx := context.Background()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -156,6 +159,46 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 	}()
 
 	return SendResult{ChatID: chatID, Title: title, MessageID: answerID}, nil
+}
+
+// endpoint is where one answer goes, fixed when Send starts: later changes to
+// the provider, its address or its key apply to the next question.
+type endpoint struct {
+	name       string
+	connection *config.Connection // nil for OpenRouter
+	key        string
+}
+
+// resolveEndpoint finds the active provider in settings and its key. A direct
+// connection's key is looked up for the address in settings, so a key saved
+// for another address is never paired with this one.
+func (s *ChatService) resolveEndpoint(settings config.Settings) (endpoint, error) {
+	conn, err := settings.ActiveConnection()
+	if err != nil {
+		return endpoint{}, err
+	}
+	if conn == nil {
+		key, err := s.keys.APIKey()
+		if err != nil {
+			return endpoint{}, fmt.Errorf("couldn't read the keyring: %w", err)
+		}
+		if key == "" {
+			return endpoint{}, errors.New("add your OpenRouter key in Preferences (Ctrl+,)")
+		}
+		return endpoint{name: "OpenRouter", key: key}, nil
+	}
+	origin, err := config.Origin(conn.BaseURL)
+	if err != nil {
+		return endpoint{}, err
+	}
+	key, err := s.keys.ConnectionKey(conn.ID, origin)
+	if err != nil {
+		return endpoint{}, fmt.Errorf("couldn't read the keyring: %w", err)
+	}
+	if key == "" && conn.NeedsKey() {
+		return endpoint{}, fmt.Errorf("add your %s key in Preferences (Ctrl+,)", conn.Name)
+	}
+	return endpoint{name: conn.Name, connection: conn, key: key}, nil
 }
 
 // stop cancels the answer streaming into the chat. the partial answer is kept

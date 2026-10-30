@@ -3,8 +3,10 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -53,8 +55,112 @@ func (s *SettingsService) PickToolFolder(current string) (string, error) {
 // returns the current preferences
 func (s *SettingsService) Get() config.Settings { return s.cfg.Get() }
 
-// validates and stores preferences
-func (s *SettingsService) Save(settings config.Settings) error { return s.cfg.Save(settings) }
+// validates and stores preferences. Connections are added and removed only
+// by AddConnection and RemoveConnection, so a Preferences window that loaded
+// before one of those can't undo it.
+func (s *SettingsService) Save(settings config.Settings) error {
+	_, err := s.cfg.Update(func(current config.Settings) (config.Settings, error) {
+		if !sameConnections(current.Connections, settings.Connections) {
+			return config.Settings{}, errConnectionsChanged
+		}
+		return settings, nil
+	})
+	return err
+}
+
+var errConnectionsChanged = errors.New("providers changed since Preferences opened. Reopen Preferences and try again")
+
+// sameConnections reports whether both lists hold the same IDs, each with the
+// same kind. Names, addresses and models may differ.
+func sameConnections(current, next []config.Connection) bool {
+	if len(current) != len(next) {
+		return false
+	}
+	kinds := make(map[string]string, len(current))
+	for _, c := range current {
+		kinds[c.ID] = c.Kind
+	}
+	for _, c := range next {
+		kind, ok := kinds[c.ID]
+		if !ok || kind != c.Kind {
+			return false
+		}
+		delete(kinds, c.ID)
+	}
+	return true
+}
+
+// ConnectionPresets are starting points for AddConnection.
+func (s *SettingsService) ConnectionPresets() []config.Connection { return config.Presets() }
+
+// AddConnection saves c under a new ID, ignoring any ID it carries, and
+// returns the updated preferences.
+func (s *SettingsService) AddConnection(c config.Connection) (config.Settings, error) {
+	id, err := config.NewConnectionID()
+	if err != nil {
+		return config.Settings{}, err
+	}
+	c.ID = id
+	return s.cfg.Update(func(current config.Settings) (config.Settings, error) {
+		current.Connections = append(current.Connections, c)
+		return current, nil
+	})
+}
+
+// RemoveConnection deletes the connection's key, then the connection. If the
+// key can't be deleted nothing changes, so no key outlives its connection.
+// The active provider can't be removed: questions would have nowhere to go.
+func (s *SettingsService) RemoveConnection(id string) (config.Settings, error) {
+	if !config.ValidConnectionID(id) {
+		return config.Settings{}, errors.New("unknown provider")
+	}
+	if current := s.cfg.Get(); current.Provider == id {
+		return config.Settings{}, errActiveConnection
+	}
+	if err := s.keys.DeleteConnectionKey(id); err != nil {
+		return config.Settings{}, fmt.Errorf("couldn't delete the provider's key, so it wasn't removed: %w", err)
+	}
+	return s.cfg.Update(func(current config.Settings) (config.Settings, error) {
+		if current.Provider == id {
+			return config.Settings{}, errActiveConnection
+		}
+		current.Connections = slices.DeleteFunc(current.Connections, func(c config.Connection) bool { return c.ID == id })
+		return current, nil
+	})
+}
+
+var errActiveConnection = errors.New("switch to another provider before removing this one")
+
+// connectionOrigin is the origin connection id's key belongs to now.
+func (s *SettingsService) connectionOrigin(id string) (string, error) {
+	for _, c := range s.cfg.Get().Connections {
+		if c.ID == id {
+			return config.Origin(c.BaseURL)
+		}
+	}
+	return "", errors.New("unknown provider")
+}
+
+// SetConnectionKey stores key for the connection's current address. Empty
+// deletes it.
+func (s *SettingsService) SetConnectionKey(id, key string) error {
+	origin, err := s.connectionOrigin(id)
+	if err != nil {
+		return err
+	}
+	return s.keys.SetConnectionKey(id, origin, key)
+}
+
+// HasConnectionKey reports whether a key is saved for the connection's
+// current address. The key itself never goes to the frontend.
+func (s *SettingsService) HasConnectionKey(id string) bool {
+	origin, err := s.connectionOrigin(id)
+	if err != nil {
+		return false
+	}
+	k, err := s.keys.ConnectionKey(id, origin)
+	return err == nil && k != ""
+}
 
 // SetAPIKey stores the key in the keyring. Empty deletes it
 func (s *SettingsService) Defaults() config.Settings { return config.Defaults() }

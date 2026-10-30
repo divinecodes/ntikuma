@@ -152,7 +152,21 @@ export interface VoiceLevelEvent {
     available: boolean;
 }
 
+export interface Connection {
+    id: string;
+    kind: "openai-compatible" | "anthropic";
+    name: string;
+    baseUrl: string;
+    defaultModel: string;
+    fallbacks: string[];
+    contextTokens: number;
+    maxTokens: number;
+}
+
 export interface Settings {
+    // "" or "openrouter", or a connection ID. defaultModel and fallbacks are OpenRouter's.
+    provider: string;
+    connections: Connection[];
     defaultModel: string;
     fallbacks: string[];
     systemPrompt: string;

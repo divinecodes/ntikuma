@@ -40,10 +40,14 @@ type secretMarker interface {
 	MarkedSecret() bool
 }
 
-// KeyStore holds the OpenRouter key. secrets.Keyring satisfies it.
+// KeyStore holds the OpenRouter key and direct connections' keys, each bound
+// to the origin it was saved for. secrets.Keyring satisfies it.
 type KeyStore interface {
 	APIKey() (string, error)
 	SetAPIKey(string) error
+	ConnectionKey(id, origin string) (string, error)
+	SetConnectionKey(id, origin, key string) error
+	DeleteConnectionKey(id string) error
 }
 
 type LLM interface {

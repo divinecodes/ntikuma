@@ -58,6 +58,22 @@ test("preferences load all fields and normalize zero fallbacks", async (t) => {
     assert.equal(prefs.settings.keepChatsDays, 0);
 });
 
+test("provider connections survive editing unrelated preferences", async (t) => {
+    const ollama = { id: "c-0123456789ab", kind: "openai-compatible", name: "Ollama", baseUrl: "http://localhost:11434/v1", defaultModel: "llama3.3", fallbacks: null, contextTokens: 8192, maxTokens: 0 };
+    const { prefs, calls } = await setup(t, { get: async () => ({ ...settings(), provider: "c-0123456789ab", connections: [ollama] }) });
+    assert.deepEqual([...prefs.settings.connections[0].fallbacks], []);
+    prefs.settings.systemPrompt = "Edited";
+    prefs.changed(0);
+    await prefs.flush();
+    const saved = calls.saved.at(-1);
+    assert.equal(saved.provider, "c-0123456789ab");
+    assert.deepEqual(saved.connections, [{ ...ollama, fallbacks: [] }]);
+
+    const legacy = await setup(t);
+    assert.equal(legacy.prefs.settings.provider, "");
+    assert.deepEqual([...legacy.prefs.settings.connections], []);
+});
+
 test("local tools fail closed for missing or explicitly empty roots and preserve the shell flag", async (t) => {
     const { prefs, calls } = await setup(t);
     assert.equal(prefs.settings.localTools, false);
