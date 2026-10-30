@@ -24,7 +24,7 @@ Every path is relative, so the folder also works on any other static host or sub
 
 Copy on the page mirrors the Ntikuma README. Check these against the app when they change:
 
-- Version and package name (`v0.1.0`, `ntikuma_0.1.0_amd64.deb`) in the hero and Install sections.
+- Version and package name (`v0.1.7`, `ntikuma_0.1.7_amd64.deb`) in the hero and Install sections.
 - Keyboard shortcuts, transcription models, and the default and fallback models.
 - `assets/og.jpg` (the social preview), `assets/demo-poster.jpg` (the same frame at 1280px, the video's poster) and `assets/ntikuma-demo.mp4` come from `brag-output/` (`brag.jpg`, and `brag.mp4` remuxed with `ffmpeg -c copy -movflags +faststart`). The video is lazy-loaded: `main.js` attaches its poster as it nears the viewport and its source only when someone presses play.
 
