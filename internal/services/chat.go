@@ -243,13 +243,15 @@ func (s *ChatService) stream(ctx context.Context, ep endpoint, chatID, answerID 
 	}
 	var res turnResult
 	var err error
+	var limit contextLimit
 	// Sized here rather than in Send, so Send never waits for the catalog.
 	switch {
 	case ep.connection != nil && ep.connection.ContextTokens > 0:
 		// A known window is applied to every chat: small ones fill long
 		// before the threshold below.
+		limit = contextLimit{name: ep.name, tokens: ep.connection.ContextTokens}
 		req.Messages = trimHistory(req.Messages, knownBudget(ep.connection.ContextTokens, req))
-		if chars := requestChars(req); chars > ep.connection.ContextTokens*charsPerToken {
+		if chars := requestChars(req); chars > limit.chars() {
 			err = fmt.Errorf("this question is too long for %s's %d-token context window (about %d characters with its attachments). Shorten it or remove attachments", ep.name, ep.connection.ContextTokens, chars)
 		}
 	case conversationChars(req.Messages) <= smallHistoryChars:
@@ -260,7 +262,7 @@ func (s *ChatService) stream(ctx context.Context, ep endpoint, chatID, answerID 
 		req.Messages = trimHistory(req.Messages, historyBudget(ctx, llm, req.Models))
 	}
 	if err == nil {
-		res, err = s.runTurn(ctx, llm, req, hidden, chatID, answerID, func(d string) {
+		res, err = s.runTurn(ctx, llm, req, limit, hidden, chatID, answerID, func(d string) {
 			bufMu.Lock()
 			buf.WriteString(d)
 			bufMu.Unlock()
@@ -408,8 +410,15 @@ func conversationChars(msgs []openrouter.Message) int {
 	return total
 }
 
-// turnChars counts replayed reasoning too: it takes space in the window.
-func turnChars(m openrouter.Message) int { return len(m.Content) + len(m.Reasoning) }
+// turnChars counts replayed reasoning and tool calls too: they take space in
+// the window.
+func turnChars(m openrouter.Message) int {
+	n := len(m.Content) + len(m.Reasoning)
+	for _, call := range m.ToolCalls {
+		n += len(call.Function.Name) + len(call.Function.Arguments)
+	}
+	return n
+}
 
 // contextSizer is an LLM that can look up its models' context windows.
 // *openrouter.Client satisfies it.
@@ -443,6 +452,22 @@ func historyBudget(ctx context.Context, llm LLM, models []string) int {
 func knownBudget(tokens int, req openrouter.Request) int {
 	budget := min(maxHistoryChars, tokens*charsPerToken/2) - len(req.Messages[0].Content) - toolChars(req.Tools)
 	return max(budget, 0)
+}
+
+// contextLimit is a direct provider's known context window; zero when unknown.
+type contextLimit struct {
+	name   string
+	tokens int
+}
+
+func (l contextLimit) chars() int { return l.tokens * charsPerToken }
+
+// toolRoom is how much of the window tool results may fill, leaving a quarter
+// for the answer.
+func (l contextLimit) toolRoom() int { return l.chars() * 3 / 4 }
+
+func (l contextLimit) full() error {
+	return fmt.Errorf("the tool results don't fit in %s's %d-token context window. Ask a narrower question, or raise the window in Preferences", l.name, l.tokens)
 }
 
 // requestChars is everything a request sends: system prompt, tools and turns.

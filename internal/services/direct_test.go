@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"unicode/utf8"
 
 	"ntikuma/internal/config"
 	"ntikuma/internal/openrouter"
@@ -313,4 +314,106 @@ func TestProviderStatusTellsTheFrontendWhatSendingNeeds(t *testing.T) {
 			t.Errorf("frontend can't read %s in %s", field, raw)
 		}
 	}
+}
+
+func TestToolContinuationsStayInsideTheWindow(t *testing.T) {
+	const window = 4096
+	root := t.TempDir()
+	big := strings.Repeat("All work and no play makes a dull answer. ", 800) // about 34,000 characters
+	for _, name := range []string{"a.md", "b.md"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(big), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(t *testing.T, conn config.Connection, question string, calls ...string) ([]openrouter.Request, any) {
+		d := newDirect(t, conn, "fake-direct-key")
+		enableFileTools(t, d.chat, root)
+		requests := useScript(d.chat, func(step int, _ context.Context, _ openrouter.Request, _ func(string)) (openrouter.Result, error) {
+			if step == 0 {
+				var tc []openrouter.ToolCall
+				for i, name := range calls {
+					tc = append(tc, fileCall(fmt.Sprintf("call-%d", i), "read_file", filepath.Join(root, name)))
+				}
+				return openrouter.Result{FinishReason: "tool_calls", ToolCalls: tc}, nil
+			}
+			return openrouter.Result{Text: "ok", FinishReason: "stop"}, nil
+		})
+		if _, err := d.chat.Send(SendRequest{Text: question}); err != nil {
+			t.Fatal(err)
+		}
+		return *requests, wait(t, d.rec)
+	}
+	ollama := config.Connection{Kind: config.KindOpenAICompatible, Name: "Ollama", BaseURL: "http://127.0.0.1:1/v1", DefaultModel: "llama3.3", ContextTokens: window}
+	toolReplies := func(req openrouter.Request) []string {
+		var out []string
+		for _, m := range req.Messages {
+			if m.Role == "tool" {
+				out = append(out, m.Content)
+			}
+		}
+		return out
+	}
+
+	for _, calls := range [][]string{{"a.md"}, {"a.md", "b.md"}} {
+		t.Run(fmt.Sprintf("%d results", len(calls)), func(t *testing.T) {
+			requests, terminal := run(t, ollama, "summarise my notes", calls...)
+			if _, ok := terminal.(DoneEvent); !ok || len(requests) != 2 {
+				t.Fatalf("terminal %+v after %d requests", terminal, len(requests))
+			}
+			// The continuation fits, with room left for the answer.
+			if chars := requestChars(requests[1]); chars > window*charsPerToken*3/4 {
+				t.Fatalf("continuation is %d characters", chars)
+			}
+			replies := toolReplies(requests[1])
+			if len(replies) != len(calls) {
+				t.Fatalf("%d tool replies", len(replies))
+			}
+			for _, r := range replies {
+				// Shortened, but each still carries a useful part of the file.
+				if !strings.HasSuffix(r, "[truncated to fit the context window]") || len(r) < 1000 || !utf8.ValidString(r) {
+					t.Fatalf("reply of %d characters ends %q", len(r), r[max(0, len(r)-60):])
+				}
+			}
+		})
+	}
+
+	t.Run("no room left", func(t *testing.T) {
+		requests, terminal := run(t, ollama, strings.Repeat("q", 12_000), "a.md")
+		ev, ok := terminal.(ErrorEvent)
+		if !ok || !strings.Contains(ev.Error, "Ollama's 4096-token context window") || len(requests) != 1 {
+			t.Fatalf("terminal %+v after %d requests", terminal, len(requests))
+		}
+		if len(ev.Activity) != 1 {
+			t.Fatalf("activity %+v", ev.Activity)
+		}
+	})
+
+	t.Run("a call too big for the window", func(t *testing.T) {
+		// Shortening results can't help when the call itself fills the window.
+		d := newDirect(t, ollama, "")
+		enableFileTools(t, d.chat, root)
+		requests := useScript(d.chat, func(step int, _ context.Context, _ openrouter.Request, _ func(string)) (openrouter.Result, error) {
+			if step == 0 {
+				return openrouter.Result{FinishReason: "tool_calls", ToolCalls: []openrouter.ToolCall{fileCall("call-0", "read_file", filepath.Join(root, strings.Repeat("x", 17_000)))}}, nil
+			}
+			return openrouter.Result{Text: "ok", FinishReason: "stop"}, nil
+		})
+		if _, err := d.chat.Send(SendRequest{Text: "q"}); err != nil {
+			t.Fatal(err)
+		}
+		if ev, ok := wait(t, d.rec).(ErrorEvent); !ok || !strings.Contains(ev.Error, "context window") || len(*requests) != 1 {
+			t.Fatalf("terminal %+v after %d requests", ev, len(*requests))
+		}
+	})
+
+	t.Run("unknown window", func(t *testing.T) {
+		remote := config.Connection{Kind: config.KindOpenAICompatible, Name: "Remote", BaseURL: "https://api.example.invalid/v1", DefaultModel: "m"}
+		requests, terminal := run(t, remote, "summarise my notes", "a.md")
+		if _, ok := terminal.(DoneEvent); !ok || len(requests) != 2 {
+			t.Fatalf("terminal %+v", terminal)
+		}
+		if r := toolReplies(requests[1]); len(r) != 1 || strings.Contains(r[0], "to fit the context window") || len(r[0]) < 19_000 {
+			t.Fatalf("reply of %d characters was shortened", len(r[0]))
+		}
+	})
 }
