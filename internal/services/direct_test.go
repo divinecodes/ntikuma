@@ -254,14 +254,6 @@ func TestDirectRemoteProvidersSkipTheCatalog(t *testing.T) {
 	}
 }
 
-func TestAnthropicConnectionsWaitForTheirAdapter(t *testing.T) {
-	d := newDirect(t, config.Connection{Kind: config.KindAnthropic, Name: "Anthropic", BaseURL: "https://api.anthropic.com", DefaultModel: "claude-sonnet-5-5"}, "fake-anthropic-key")
-	d.chat.newLLM = func(endpoint) LLM { t.Error("a client was built"); return &fakeLLM{} }
-	if _, err := d.chat.Send(SendRequest{Text: "question"}); err == nil || !strings.Contains(err.Error(), "can't be used yet") {
-		t.Fatalf("sent to Anthropic: %v", err)
-	}
-}
-
 func TestErrorsNameTheProvider(t *testing.T) {
 	openRouter := endpoint{name: "OpenRouter"}
 	ollama := endpoint{name: "Ollama", connection: &config.Connection{BaseURL: "http://localhost:11434/v1"}}

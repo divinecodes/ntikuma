@@ -41,6 +41,7 @@ type Connection struct {
 func Presets() []Connection {
 	return []Connection{
 		{Kind: KindOpenAICompatible, Name: "OpenAI", BaseURL: "https://api.openai.com/v1"},
+		{Kind: KindAnthropic, Name: "Anthropic", BaseURL: "https://api.anthropic.com"},
 		// Ollama's default window depends on VRAM; 4096 is its smallest.
 		{Kind: KindOpenAICompatible, Name: "Ollama", BaseURL: "http://localhost:11434/v1", ContextTokens: 4096},
 		{Kind: KindOpenAICompatible, Name: "Kimi", BaseURL: "https://api.moonshot.ai/v1"},

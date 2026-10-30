@@ -312,3 +312,29 @@ func TestDirectModelListsAreBounded(t *testing.T) {
 		t.Fatal("an oversized model list was read")
 	}
 }
+
+func TestTheExportedAccumulatorKeepsTheChecks(t *testing.T) {
+	var a ToolCallAccumulator
+	for _, f := range []struct {
+		index          int
+		id, name, args string
+	}{{2, "b", "demo", `{"n":`}, {0, "a", "demo", `{}`}, {2, "", "", `1}`}} {
+		if err := a.Add(f.index, f.id, f.name, f.args); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls, err := a.Finish("tool_calls")
+	if err != nil || len(calls) != 2 || calls[0].ID != "a" || calls[1].Function.Arguments != `{"n":1}` || calls[1].Type != "function" {
+		t.Fatalf("%+v %v", calls, err)
+	}
+	var dup ToolCallAccumulator
+	_ = dup.Add(0, "a", "demo", "{}")
+	_ = dup.Add(1, "a", "demo", "{}")
+	if _, err := dup.Finish("tool_calls"); err == nil {
+		t.Fatal("duplicate IDs accepted")
+	}
+	var big ToolCallAccumulator
+	if err := big.Add(0, "a", "demo", strings.Repeat("x", maxToolArgumentBytes+1)); err == nil {
+		t.Fatal("oversized arguments accepted")
+	}
+}

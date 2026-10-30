@@ -281,8 +281,14 @@ func TestLocalConnectionsNeedAContextWindowToBeActive(t *testing.T) {
 		if IsLoopback(p.BaseURL) && p.ContextTokens == 0 {
 			t.Errorf("%s preset has no context window", p.Name)
 		}
+	}
+	var anthropic []Connection
+	for _, p := range Presets() {
 		if p.Kind == KindAnthropic {
-			t.Errorf("%s is offered before its adapter exists", p.Name)
+			anthropic = append(anthropic, p)
 		}
+	}
+	if len(anthropic) != 1 || anthropic[0].BaseURL != "https://api.anthropic.com" {
+		t.Errorf("Anthropic presets %+v", anthropic)
 	}
 }

@@ -71,10 +71,6 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 	if err != nil {
 		return SendResult{}, err
 	}
-	if ep.connection != nil && ep.connection.Kind == config.KindAnthropic {
-		// Never send a question meant for another provider to OpenRouter.
-		return SendResult{}, fmt.Errorf("%s can't be used yet. Choose another provider in Preferences", ep.name)
-	}
 	models, err := settings.ModelChain(req.Model)
 	if err != nil {
 		return SendResult{}, err

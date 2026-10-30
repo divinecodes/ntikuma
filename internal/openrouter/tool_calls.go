@@ -203,3 +203,18 @@ func (a *toolCallAccumulator) snapshot(deltas []toolCallDelta) error {
 	}
 	return nil
 }
+
+// ToolCallAccumulator assembles streamed calls by index for other adapters,
+// with the same limits and checks as Chat Completions streams.
+type ToolCallAccumulator struct{ calls toolCallAccumulator }
+
+// Add appends a fragment of the call at index; id and name may repeat or be
+// empty after the first fragment.
+func (a *ToolCallAccumulator) Add(index int, id, name, arguments string) error {
+	return a.calls.add([]toolCallDelta{{Index: &index, ID: id, Type: "function", Function: FunctionCall{Name: name, Arguments: arguments}}}, true)
+}
+
+// Finish returns the calls in index order once reason is "tool_calls".
+func (a *ToolCallAccumulator) Finish(reason string) ([]ToolCall, error) {
+	return a.calls.finish(reason)
+}

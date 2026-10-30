@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"syscall"
 
+	"ntikuma/internal/anthropic"
 	"ntikuma/internal/config"
 	"ntikuma/internal/openrouter"
 )
@@ -19,6 +20,11 @@ type endpoint struct {
 }
 
 func newClient(ep endpoint) LLM {
+	if ep.connection != nil && ep.connection.Kind == config.KindAnthropic {
+		client := anthropic.New(ep.connection.BaseURL, ep.key)
+		client.MaxTokens = ep.connection.MaxTokens
+		return client
+	}
 	client := openrouter.New(ep.key)
 	if ep.connection != nil {
 		client.BaseURL, client.Direct = ep.connection.BaseURL, true
@@ -68,6 +74,8 @@ func (ep endpoint) friendlyError(err error) string {
 			return "Out of " + ep.name + " credits"
 		case 429:
 			return "Every model in the list is rate-limited right now. Try again shortly"
+		case 529:
+			return ep.name + " is overloaded right now. Try again shortly"
 		}
 		return apiErr.Message
 	}

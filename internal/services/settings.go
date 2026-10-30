@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"ntikuma/internal/anthropic"
 	"ntikuma/internal/config"
 	"ntikuma/internal/openrouter"
 )
@@ -217,9 +218,6 @@ func (s *SettingsService) ConnectionModels(id string) ([]openrouter.ModelInfo, e
 	if conn == nil {
 		return nil, errors.New("unknown provider")
 	}
-	if conn.Kind != config.KindOpenAICompatible {
-		return nil, fmt.Errorf("%s can't list its models yet", conn.Name)
-	}
 	origin, err := config.Origin(conn.BaseURL)
 	if err != nil {
 		return nil, err
@@ -237,11 +235,19 @@ func (s *SettingsService) ConnectionModels(id string) ([]openrouter.ModelInfo, e
 	if key == "" && conn.NeedsKey() {
 		return nil, fmt.Errorf("add your %s key to list its models", conn.Name)
 	}
-	client := openrouter.New(key)
-	client.BaseURL, client.Direct = conn.BaseURL, true
+	var lister interface {
+		Models(context.Context) ([]openrouter.ModelInfo, error)
+	}
+	if conn.Kind == config.KindAnthropic {
+		lister = anthropic.New(conn.BaseURL, key)
+	} else {
+		client := openrouter.New(key)
+		client.BaseURL, client.Direct = conn.BaseURL, true
+		lister = client
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	listed, err := client.Models(ctx)
+	listed, err := lister.Models(ctx)
 	if err != nil {
 		return nil, err
 	}
