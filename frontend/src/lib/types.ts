@@ -72,6 +72,8 @@ export interface ApprovalEvent {
     expiresAt: string;
     state: "pending" | "closed";
     outcome?: "allowed" | "denied" | "expired" | "canceled" | "revoked";
+    /** Where the command's output is sent. */
+    provider?: string;
 }
 
 export interface DoneEvent {
@@ -84,6 +86,8 @@ export interface DoneEvent {
     activity?: ToolActivity[];
     citations?: Citation[];
     searches?: number;
+    /** The direct provider that answered; absent for OpenRouter. */
+    provider?: string;
 }
 
 export interface ErrorEvent {
@@ -96,6 +100,7 @@ export interface ErrorEvent {
     activity?: ToolActivity[];
     citations?: Citation[];
     searches?: number;
+    provider?: string;
 }
 
 export interface Chat {
@@ -119,6 +124,8 @@ export interface MessageView {
     stopped?: boolean;
     error?: string;
     cutOff?: boolean;
+    /** The direct provider that answered; absent for OpenRouter. */
+    provider?: string;
 }
 
 export interface ChatDetail {
@@ -206,6 +213,7 @@ export interface UIMessage {
     citations?: Citation[];
     searches?: number;
     activity?: ToolActivity[];
+    provider?: string;
 }
 
 

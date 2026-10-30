@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import { historyApi } from "../lib/api";
   import { HistoryBrowser } from "../lib/history.svelte";
-  import { copyCode, dayLabel, externalLinks, highlight, modelName, renderMarkdown, shortWhen, snippetParts } from "../lib/format";
+  import { answerNote, copyCode, dayLabel, externalLinks, highlight, renderMarkdown, shortWhen, snippetParts } from "../lib/format";
   import Icon from "../components/Icon.svelte";
   import Sources from "../components/Sources.svelte";
   import ToolActivity from "../components/ToolActivity.svelte";
@@ -148,8 +148,8 @@
           {#if m.role === "user"}
             <div class="bubble">{m.content}</div>
           {:else if m.role === "assistant"}
-            {#if m.fallback && m.model}
-              <span class="fallback"><Icon name="swap" size={13} stroke={2} />Answered by {modelName(m.model)} · fallback</span>
+            {#if answerNote(m)}
+              <span class="fallback">{#if m.fallback}<Icon name="swap" size={13} stroke={2} />{/if}{answerNote(m)}</span>
             {/if}
             <div class="md" use:externalLinks use:copyCode>{@html renderMarkdown(m.content)}</div>
             <Sources citations={m.citations} />

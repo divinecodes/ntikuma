@@ -95,6 +95,7 @@ type DoneEvent struct {
 	Citations []openrouter.Citation `json:"citations,omitempty"`
 	Searches  *int                  `json:"searches,omitempty"`
 	Activity  []ToolActivity        `json:"activity,omitempty"`
+	Provider  string                `json:"provider,omitempty"` // a direct provider's name; empty for OpenRouter
 }
 
 // ErrorEvent reports a failed answer. Partial text, if any, was already streamed.
@@ -108,6 +109,7 @@ type ErrorEvent struct {
 	Citations []openrouter.Citation `json:"citations,omitempty"`
 	Searches  *int                  `json:"searches,omitempty"`
 	Activity  []ToolActivity        `json:"activity,omitempty"`
+	Provider  string                `json:"provider,omitempty"`
 }
 
 // ToolActivity exposes summaries, never file contents or provider reasoning.
@@ -133,6 +135,7 @@ type ApprovalEvent struct {
 	ExpiresAt        time.Time `json:"expiresAt"`
 	State            string    `json:"state"`             // pending, closed
 	Outcome          string    `json:"outcome,omitempty"` // allowed, denied, expired, canceled, revoked
+	Provider         string    `json:"provider"`          // where the command's output goes
 }
 
 // ProviderStatus tells the frontend what sending needs from the active

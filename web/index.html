@@ -375,8 +375,8 @@ Replay
 <div class="wrap stack">
 <div class="intro">
 <p class="eyebrow">Where your data goes</p>
-<h2 class="h2">Your chats are stored on your machine. Each question goes to OpenRouter.</h2>
-<p class="lede">You bring your own OpenRouter key and choose the model. Claude Sonnet is the default, with GPT-5.1 as the fallback. Every question is sent with what the model needs to answer it, including the earlier messages in that chat.</p>
+<h2 class="h2">Your chats are stored on your machine. Each question goes to the provider you choose.</h2>
+<p class="lede">You bring your own key and choose the model: OpenRouter by default, or OpenAI, Anthropic, Ollama and other compatible APIs directly. On OpenRouter, Claude Sonnet is the default, with GPT-5.1 as the fallback. Every question is sent with what the model needs to answer it, including the earlier messages in that chat.</p>
 </div>
 <div class="cols2">
 <div class="ledger">
@@ -384,19 +384,19 @@ Replay
 <ul class="rows">
 <li class="krow"><span>Microphone audio, transcribed by a local model</span><span class="where">Never uploaded</span></li>
 <li class="krow"><span>Chat history and screenshots</span><span class="where">SQLite</span></li>
-<li class="krow"><span>Your OpenRouter key</span><span class="where">GNOME Keyring</span></li>
+<li class="krow"><span>Your API keys</span><span class="where">GNOME Keyring</span></li>
 <li class="krow"><span>Preferences</span><span class="where">~/.config</span></li>
 </ul>
 </div>
 <div class="ledger">
-<h3 class="eyebrow away">Sent to OpenRouter with each question</h3>
+<h3 class="eyebrow away">Sent to your provider with each question</h3>
 <ul class="rows">
 <li class="krow"><span>Your question, typed or transcribed</span></li>
 <li class="krow"><span>Selected text, clipboard and screenshots you attach</span></li>
 <li class="krow"><span>Earlier messages in the same chat, with their attachments</span></li>
 <li class="krow"><span>Files the model reads and output of commands you allow</span></li>
 <li class="krow"><span>Your local date and time</span></li>
-<li class="krow"><span>Web searches, which OpenRouter runs for the model</span></li>
+<li class="krow"><span>Web searches, which OpenRouter runs for the model (OpenRouter only)</span></li>
 </ul>
 </div>
 </div>
@@ -428,7 +428,7 @@ Replay
 <div class="intro">
 <p class="eyebrow">Install</p>
 <h2 class="h2">Running in about a minute.</h2>
-<p class="lede">Ntikuma needs a GNOME session on Linux and an OpenRouter key. Voice models are separate downloads.</p>
+<p class="lede">Ntikuma needs a GNOME session on Linux and an OpenRouter key, or another provider such as a local Ollama. Voice models are separate downloads.</p>
 </div>
 <div class="cols2">
 <div class="install">

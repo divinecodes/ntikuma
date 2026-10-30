@@ -1194,3 +1194,24 @@ test("a failed Continue shows the error and can be retried without touching the 
     assert.equal(app.streaming, false);
     assert.equal(app.canContinue, true);
 });
+
+test("answers keep the name of the direct provider that answered them", async () => {
+    const app = await fresh();
+    let n = 0;
+    h.send = async () => ({ chatId: "chat", messageId: `a${++n}`, title: "Chat" });
+    app.input = "q1";
+    await app.send();
+    h.handlers.done({ chatId: "chat", messageId: "a1", model: "llama3.3", fallback: false, stopped: false, provider: "Ollama" });
+    assert.equal(app.messages[1].provider, "Ollama");
+    app.input = "q2";
+    await app.send();
+    h.handlers.error({ chatId: "chat", messageId: "a2", error: "Couldn't reach Ollama", provider: "Ollama" });
+    assert.equal(app.messages[3].provider, "Ollama");
+
+    h.detail = async () => ({ chat: { id: "saved", title: "Saved" }, messages: [
+        { id: "q", role: "user", content: "q" },
+        { id: "a", role: "assistant", content: "ok", model: "llama3.3", provider: "Ollama" },
+    ] });
+    await app.openChat("saved");
+    assert.equal(app.messages[1].provider, "Ollama");
+});

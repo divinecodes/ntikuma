@@ -342,6 +342,7 @@ class AppState {
                     content: m.content,
                     model: m.model,
                     fallback: m.fallback,
+                    provider: m.provider,
                     attachments: m.attachments,
                     citations: m.citations,
                     searches: m.searches,
@@ -586,6 +587,7 @@ class AppState {
             { ...a, status: "stopped" in d && d.stopped ? "stopped" : "error" } : a);
         m.model = d.model;
         m.fallback = d.fallback;
+        m.provider = d.provider;
         if ("error" in d) {
             m.error = d.error;
         } else {

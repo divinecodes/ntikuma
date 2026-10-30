@@ -332,3 +332,84 @@ func TestConnectionModelsFailWithoutAKeyItNeeds(t *testing.T) {
 		t.Fatal("asked the provider without a key")
 	}
 }
+
+func TestAnswersSayWhichDirectProviderAnsweredThem(t *testing.T) {
+	d := newDirect(t, config.Connection{Kind: config.KindOpenAICompatible, Name: "Local", BaseURL: "http://127.0.0.1:1/v1", DefaultModel: "llama3.3", ContextTokens: 100_000}, "")
+	fail := false
+	useScript(d.chat, func(_ int, _ context.Context, _ openrouter.Request, _ func(string)) (openrouter.Result, error) {
+		if fail {
+			return openrouter.Result{Model: "llama3.3"}, errors.New("broke")
+		}
+		return openrouter.Result{Model: "llama3.3", Text: "ok", FinishReason: "stop"}, nil
+	})
+	res, err := d.chat.Send(SendRequest{Text: "q"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done, ok := wait(t, d.rec).(DoneEvent); !ok || done.Provider != "Local" {
+		t.Fatalf("terminal %+v", done)
+	}
+	fail = true
+	if _, err := d.chat.Send(SendRequest{ChatID: res.ChatID, Text: "again"}); err != nil {
+		t.Fatal(err)
+	}
+	if ev, ok := wait(t, d.rec).(ErrorEvent); !ok || ev.Provider != "Local" {
+		t.Fatalf("terminal %+v", ev)
+	}
+	// Renaming the provider later doesn't rewrite where answers went.
+	s := d.settings.Get()
+	s.Connections[0].Name = "Renamed"
+	if err := d.settings.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := NewHistoryService(d.chat.store).Get(res.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := []string{detail.Messages[1].Provider, detail.Messages[3].Provider}; !slices.Equal(got, []string{"Local", "Local"}) {
+		t.Fatalf("history providers %v", got)
+	}
+	raw, _ := json.Marshal(detail.Messages[1])
+	if !strings.Contains(string(raw), `"provider":"Local"`) {
+		t.Fatalf("JSON %s", raw)
+	}
+
+	// OpenRouter answers stay as they were.
+	llm := &fakeLLM{result: openrouter.Result{Text: "ok"}}
+	svc, rec, _ := newChat(t, llm, "fake-openrouter-key")
+	if _, err := svc.Send(SendRequest{Text: "q"}); err != nil {
+		t.Fatal(err)
+	}
+	if done, _ := wait(t, rec).(DoneEvent); done.Provider != "" {
+		t.Fatalf("OpenRouter answer names %q", done.Provider)
+	}
+}
+
+func TestCommandApprovalsNameTheAnswersProvider(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	d := newDirect(t, config.Connection{Kind: config.KindOpenAICompatible, Name: "Local", BaseURL: "http://127.0.0.1:1/v1", DefaultModel: "llama3.3", ContextTokens: 100_000}, "")
+	s := d.settings.Get()
+	s.LocalTools, s.AllowShellCommands, s.ToolRoots = true, true, []string{}
+	if err := d.settings.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan ApprovalEvent, 64)
+	d.chat.events = approvalRecorder{Emitter: d.rec, approvals: events}
+	useScript(d.chat, func(step int, _ context.Context, _ openrouter.Request, _ func(string)) (openrouter.Result, error) {
+		if step == 0 {
+			return openrouter.Result{FinishReason: "tool_calls", ToolCalls: []openrouter.ToolCall{commandCall("shell-1", "true")}}, nil
+		}
+		return openrouter.Result{Text: "done"}, nil
+	})
+	if _, err := d.chat.Send(SendRequest{Text: "run it"}); err != nil {
+		t.Fatal(err)
+	}
+	event := pendingCommand(t, events)
+	if event.Provider != "Local" {
+		t.Fatalf("approval names %q", event.Provider)
+	}
+	if err := decide(d.chat, event, false); err != nil {
+		t.Fatal(err)
+	}
+	wait(t, d.rec)
+}

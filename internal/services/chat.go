@@ -35,6 +35,7 @@ type ChatService struct {
 type runningAnswer struct {
 	messageID string
 	cancel    context.CancelFunc
+	provider  string // where this answer's questions and tool results go
 }
 
 // NewChatService wires the chat service
@@ -150,7 +151,7 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 
 	answerID := store.NewID()
 	streamCtx, cancel := context.WithCancel(context.Background())
-	s.running[chatID] = &runningAnswer{messageID: answerID, cancel: cancel}
+	s.running[chatID] = &runningAnswer{messageID: answerID, cancel: cancel, provider: ep.name}
 	s.workers.Add(1)
 
 	go func() {
@@ -271,10 +272,14 @@ func (s *ChatService) stream(ctx context.Context, ep endpoint, chatID, answerID 
 	flush()
 
 	stopped := ctx.Err() != nil || errors.Is(err, context.Canceled)
+	provider := ""
+	if ep.connection != nil {
+		provider = ep.name
+	}
 	resumable := cutOff(res.Text, stopped, err)
 	activity := activityViews(res.Activity)
 	if res.Text != "" || len(res.Citations) != 0 || res.Searches != nil || len(res.Activity) != 0 || stopped || err != nil {
-		meta := messageMeta{Citations: res.Citations, Searches: res.Searches, Activity: res.Activity, Stopped: stopped, CutOff: resumable}
+		meta := messageMeta{Citations: res.Citations, Searches: res.Searches, Activity: res.Activity, Stopped: stopped, CutOff: resumable, Provider: provider}
 		if ep.connection != nil && res.Reasoning != "" {
 			meta.Reasoning, meta.ReasoningFrom = truncateUTF8(res.Reasoning, maxStoredReasoning), ep.connection.ID
 		}
@@ -293,13 +298,13 @@ func (s *ChatService) stream(ctx context.Context, ep endpoint, chatID, answerID 
 	// A completion event allows the frontend to send a follow-up immediately.
 	finish()
 	if err != nil && !stopped {
-		s.events.Emit(EventChatError, ErrorEvent{ChatID: chatID, MessageID: answerID, Error: ep.friendlyError(err), CutOff: resumable, Model: res.Model, Fallback: res.Fallback, Citations: res.Citations, Searches: res.Searches, Activity: activity})
+		s.events.Emit(EventChatError, ErrorEvent{ChatID: chatID, MessageID: answerID, Error: ep.friendlyError(err), CutOff: resumable, Model: res.Model, Fallback: res.Fallback, Citations: res.Citations, Searches: res.Searches, Activity: activity, Provider: provider})
 		return
 	}
 
 	s.events.Emit(EventChatDone, DoneEvent{
 		ChatID: chatID, MessageID: answerID, Model: res.Model, Fallback: res.Fallback, Stopped: stopped, CutOff: resumable,
-		Citations: res.Citations, Searches: res.Searches, Activity: activity,
+		Citations: res.Citations, Searches: res.Searches, Activity: activity, Provider: provider,
 	})
 }
 

@@ -80,6 +80,15 @@
     <section>
       <h2>Provider</h2>
       <p class="desc">Questions go through OpenRouter, or straight to a provider you add here. Web search needs OpenRouter.</p>
+      {#if active}
+        <p class="desc">
+          {#if local}
+            A server on this computer can still pass questions on. Ollama's cloud models run on Ollama's servers; to keep everything here, use local models and start Ollama with <code>OLLAMA_NO_CLOUD=1</code>.
+          {:else}
+            Questions, attachments and tool results go straight to {active.name}. Its own data and retention policies apply.
+          {/if}
+        </p>
+      {/if}
       <div class="list">
         <div class="row">
           <div class="text"><label for="provider">Send questions to</label><small>{active ? active.baseUrl : "openrouter.ai"}</small></div>
@@ -230,7 +239,7 @@
 
     <section id="local-tools-section">
       <h2>Local tools</h2>
-      <p class="desc">Allow the model to list folders and read text files in the folders below. File contents it reads are sent to your chat model through OpenRouter.</p>
+      <p class="desc">Allow the model to list folders and read text files in the folders below. File contents it reads are sent to your chat model through {active?.name ?? "OpenRouter"}.</p>
       <div class="list">
         <div class="row">
           <div class="text"><span>Enable local tools</span><small>Read-only file access in your tool folders</small></div>

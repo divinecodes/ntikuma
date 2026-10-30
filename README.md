@@ -1,19 +1,19 @@
 # Ntikuma
 
-A GNOME popup assistant for quick questions. Open it with Super+Space, type or dictate a question, and dismiss it when you are done. Answers stream from OpenRouter, conversations stay in a local SQLite database, and voice transcription supports local Qwen3-ASR, Parakeet, Cohere Transcribe, or a separately installed whisper.cpp server.
+A GNOME popup assistant for quick questions. Open it with Super+Space, type or dictate a question, and dismiss it when you are done. Answers stream from OpenRouter, or directly from OpenAI, Anthropic, Ollama or another OpenAI-compatible API you add in Preferences. Conversations stay in a local SQLite database, and voice transcription supports local Qwen3-ASR, Parakeet, Cohere Transcribe, or a separately installed whisper.cpp server.
 
 Built with Go, Wails v3.0.0-beta.34, and Svelte 5.
 
 For a complete setup, see [Installation and local voice models](INSTALLATION.md). It covers app dependencies, model downloads, Voice Preferences, installed runtimes, and troubleshooting.
 
-See [Privacy](PRIVACY.md) for what is processed locally and what goes to OpenRouter. Use the private reporting route in the [security policy](SECURITY.md) for vulnerabilities.
+See [Privacy](PRIVACY.md) for what is processed locally and what goes to OpenRouter or a direct provider. Use the private reporting route in the [security policy](SECURITY.md) for vulnerabilities.
 
 ## Requirements
 
 - Linux with a GNOME desktop session.
 - Go 1.26 or newer, as required by `go.mod`.
 - Node.js 24.15 or newer on the Node 24 line, and npm for frontend development and tests.
-- An OpenRouter API key for answering questions.
+- An OpenRouter API key for answering questions, or a direct provider (see [Providers](#providers)); a server on this computer, such as Ollama, needs no key.
 - For screenshots, an XDG desktop screenshot portal with interactive capture support. GNOME uses `xdg-desktop-portal` and `xdg-desktop-portal-gnome`.
 - For dictation, a microphone, `pw-record` or `parecord`, and a configured transcription runtime with a downloaded model.
 
@@ -56,9 +56,9 @@ The application starts in the tray with its popup hidden. Click its tray icon, o
 ./bin/ntikuma show
 ```
 
-Open Preferences with Ctrl+, and save your OpenRouter key. It is stored in GNOME Keyring, separately from the preferences file. Preferences save automatically; wait for Saved after changing a setting.
+Open Preferences with Ctrl+, and save your OpenRouter key, or add a direct provider (see [Providers](#providers)). It is stored in GNOME Keyring, separately from the preferences file. Preferences save automatically; wait for Saved after changing a setting.
 
-For development, setting `NTIKUMA_OPENROUTER_KEY` before launch overrides the saved key.
+For development, setting `NTIKUMA_OPENROUTER_KEY` before launch overrides the saved OpenRouter key.
 
 To keep the popup open while inspecting it:
 
@@ -84,7 +84,7 @@ Enable Offer a screenshot in Preferences, then click Screenshot in the question 
 
 Remove the chip with × before sending to exclude the new screenshot. A sent screenshot stays in the local chat database and is included in follow-up questions, including after reopening the chat from History. A capture longer than 2,048 pixels on either side is scaled down to fit, in its original PNG or JPEG format, since providers scale larger images down before the model sees them; the chip label shows the size that is sent and saved. Follow-ups resend only the four most recent screenshots in a chat, up to 24 MiB in total; older ones are replaced with a note to the model. Once a conversation passes its budget, its oldest turns are no longer sent, and the model is told that earlier messages were left out. The budget is about half the smallest context window among the chosen model and its fallbacks, at roughly four characters a token, and at most 300,000 characters. Ntikuma reads the windows from OpenRouter's model catalog (cached for 10 minutes) only once a chat passes 16,000 characters; if the catalog can't be read, it uses 300,000. History shows its label. Delete the chat or clear history to remove its stored screenshots.
 
-Screenshots need an image-capable OpenRouter model. For a chat containing images, Ntikuma checks the current model catalog and skips configured models that do not advertise image input. It preserves the order of compatible defaults/fallbacks and reports a fallback when one answers. If no configured model supports images, choose one in Preferences or the model picker. A catalog lookup failure asks you to retry. Images are never silently discarded to use a text-only model. [OpenRouter image inputs](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding), [model capabilities](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties).
+Screenshots need an image-capable model. On OpenRouter, for a chat containing images, Ntikuma checks the current model catalog and skips configured models that do not advertise image input. It preserves the order of compatible defaults/fallbacks and reports a fallback when one answers. If no configured model supports images, choose one in Preferences or the model picker. A catalog lookup failure asks you to retry. Images are never silently discarded to use a text-only model. [OpenRouter image inputs](https://openrouter.ai/docs/guides/overview/multimodal/image-understanding), [model capabilities](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties).
 
 Each screenshot must be PNG or JPEG, at most 10 MiB and 40 megapixels. Capture a smaller area if it exceeds either limit. The text context limit does not truncate images. Temporary portal files are removed after reading, including when an image is rejected. Pictures saved by GNOME outside the temporary directory remain in their original location; removing a chip or deleting a chat does not delete those desktop-owned pictures.
 
@@ -200,7 +200,7 @@ The [Cohere installation steps](INSTALLATION.md#cohere-transcribe) cover the ver
 4. In review, edit the text and press Enter or click Send. Shift+Enter inserts a newline. Record again discards that transcript and starts a fresh recording.
 5. Esc returns to the previous view. Dismissing the voice view cancels its recording or transcription.
 
-An OpenRouter key is needed to send the question, but not to transcribe locally. Stop an existing answer before submitting another transcript.
+The active provider's key (when it needs one) is needed to send the question, but not to transcribe locally. Stop an existing answer before submitting another transcript.
 
 The input display shows measured microphone activity from the same 16 kHz mono WAV used for transcription. Levels update ten times per second, using recent signed 16-bit PCM samples and a logarithmic display scale. Digital silence leaves the bars flat; speaking raises them. The display waits for the recorder to write its first samples and can lag briefly while the recorder buffers audio. Metering opens no second microphone stream and does not modify the WAV. [PipeWire recording formats](https://pipewire.pages.freedesktop.org/pipewire/page_man_pw-cat_1.html).
 
@@ -221,6 +221,31 @@ With reduced motion enabled, the history bars become a simple current-level indi
 | Delete in history | Delete the selected chat when the search input is empty |
 
 Hiding a text chat does not stop its answer. Reopening resumes a streaming chat or a recently used chat. Links in answers and history previews open in your external browser.
+
+## Providers
+
+Questions go to OpenRouter by default. To send them straight to a provider instead, open Preferences, pick a preset under **Provider** and select **Add provider**; the new provider becomes active. Switch between providers with **Send questions to**. One provider is active at a time, and a switch takes effect from the next question.
+
+| Preset | Address | Key |
+| --- | --- | --- |
+| OpenAI | `https://api.openai.com/v1` | Required |
+| Anthropic | `https://api.anthropic.com` | Required |
+| Ollama | `http://localhost:11434/v1` | Not needed |
+| Kimi (Moonshot) | `https://api.moonshot.ai/v1` | Required |
+| DeepSeek | `https://api.deepseek.com` | Required |
+| Custom | `http://localhost:8080/v1` | Optional on this computer |
+
+While a provider is active, edit its name, address, key and context window under **Provider**, and its default model and up to three fallbacks under **Models**. Remove a provider after switching away from it. Its key is saved in GNOME Keyring for its current address; after you change the address, save the key again. Addresses need `https://`, except for a server on this computer (`localhost`, `127.0.0.0/8`, `::1`). Ntikuma refuses a redirect to a different address rather than send the question and key there.
+
+- **Models:** Preferences suggests models from the provider's own list. Type any model ID if the list can't be loaded. Fallbacks are tried in order, one request each, when a model is missing, rate-limited, timed out or the provider is down, and only before any text has arrived. A wrong key or a bad request isn't retried.
+- **Context window:** set it in tokens for a server on this computer; Ntikuma won't select one without it. Ollama's default depends on your GPU memory (4,096 tokens below 24 GiB); `ollama ps` shows the current value and `OLLAMA_CONTEXT_LENGTH` raises it. With a window set, every chat is trimmed to about half of it, and a question that can't fit is refused with a message rather than cut off by the server. Remote providers without a window use the 300,000-character budget.
+- **Web search** is an OpenRouter feature; the Web pill is off while a direct provider is active.
+- **Screenshots** are sent as they are; a model that can't read images returns an error.
+- **Anthropic** uses the Messages API (`anthropic-version: 2026-10-21`) with a 32,000-token answer limit, thinking included.
+- **DeepSeek, Kimi** and similar providers return their reasoning with each answer. While Local tools are on, it's saved with the answer and sent back to the same provider, which DeepSeek requires. See [Privacy](PRIVACY.md).
+- Answers from a direct provider say which one answered, in the chat and in History.
+
+A server on this computer can still pass questions on: Ollama runs its cloud models on Ollama's servers. To keep everything local, use local models and start Ollama with `OLLAMA_NO_CLOUD=1`.
 
 ## Live web search
 
@@ -246,7 +271,7 @@ Preferences now includes Local tools and an editable tool-folder list. Local too
 
 With Local tools enabled, each question offers `list_directory` and `read_file` to your model. Ask "What's in my Documents folder?" or give a path to a text file inside a tool folder. Web adds its server tools to the same request. Once a local tool has run in an answer, the rest of that answer can still search the web but can't fetch pages, so a page or file can't steer the model into sending your files to a URL. Models are not restricted by family; function requests require providers that support tool parameters, including fallbacks.
 
-Tool results are sent to your model through OpenRouter. Folder permissions include subfolders. File tools resolve symlinks, check the allowed roots, and use anchored filesystem operations to prevent traversal outside those roots. They accept UTF-8 text files up to 1 MiB, reject binary and non-regular files, list at most 256 directory entries, and cap tool-result text at 20,000 characters with a truncation marker. They refuse hidden files and folders (such as `.bashrc`, `.config` and `.git`) and leave them out of listings. The hidden check applies to the path inside a tool folder, so a folder you add inside a hidden directory, such as `~/.config/app`, still works. Turn on **Read hidden files** in Preferences to let the file tools read dotfiles; it starts off. Key and credential files are refused whatever that setting, and anywhere in the path, so a tool folder set to `~/.aws` still hides its `credentials`. These include `*.pem`, `*.key`, `*.p12`, `*.kdbx`, `*.env`, `.env.*`, `.envrc`, `id_rsa` and other SSH key names, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.aws/credentials`, `.docker/config.json`, `.kube/config`, and everything in `.ssh`, `.gnupg` and `.password-store`. Disabling Local tools, removing a folder or turning off Read hidden files blocks subsequent reads in an active answer; enabling Local tools or Read hidden files takes effect on the next question.
+Tool results are sent to your model through the active provider. Folder permissions include subfolders. File tools resolve symlinks, check the allowed roots, and use anchored filesystem operations to prevent traversal outside those roots. They accept UTF-8 text files up to 1 MiB, reject binary and non-regular files, list at most 256 directory entries, and cap tool-result text at 20,000 characters with a truncation marker. They refuse hidden files and folders (such as `.bashrc`, `.config` and `.git`) and leave them out of listings. The hidden check applies to the path inside a tool folder, so a folder you add inside a hidden directory, such as `~/.config/app`, still works. Turn on **Read hidden files** in Preferences to let the file tools read dotfiles; it starts off. Key and credential files are refused whatever that setting, and anywhere in the path, so a tool folder set to `~/.aws` still hides its `credentials`. These include `*.pem`, `*.key`, `*.p12`, `*.kdbx`, `*.env`, `.env.*`, `.envrc`, `id_rsa` and other SSH key names, `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.aws/credentials`, `.docker/config.json`, `.kube/config`, and everything in `.ssh`, `.gnupg` and `.password-store`. Disabling Local tools, removing a folder or turning off Read hidden files blocks subsequent reads in an active answer; enabling Local tools or Read hidden files takes effect on the next question.
 
 The hints show activity such as "Reading todo.md…" while a tool runs. Each answer lists the tools it used, including failed or stopped calls, and History retains that activity. Esc hides the popup while the answer continues; Ctrl+. stops it and saves any partial text with its Stopped status. Errors also preserve partial text, sources and completed activity. An answer cut off by the model's output limit, the provider's content filter or a dropped connection keeps its text and says why it stopped. When the last answer stopped early with some text, because it reached the output limit, the connection dropped or you stopped it, a Continue button appears under it. Continue sends a short follow-up asking the model to carry on from where it stopped; it shows in the chat as your message and leaves your draft and chips alone. Answers stopped by a content filter or a provider error don't offer it. An answer that failed or was stopped before any text arrived is sent to the model as a short placeholder in later questions, so the chat keeps working.
 
@@ -260,7 +285,7 @@ The saved fields are `localTools`, `toolRoots`, `allowHiddenFiles` and `allowShe
 
 Enable **Local tools** and **Allow shell commands** in Preferences to offer `run_command` on the next question. For example, ask "How much disk space do I have?" The model can propose `df -h`, and Ntikuma shows the exact command and working directory before execution. Each command requires its own **Allow once** decision. **Deny**, Esc while its card is open, or two minutes without a decision returns "the user declined" to the model. Starting another chat declines the abandoned approval.
 
-Approved commands run in noninteractive Bash from your home directory, with your account's permissions. Shell access is separate from the tool-folder restrictions and is not sandboxed. Review the whole command, including redirects, pipelines and multiple lines. Command output goes to your model through OpenRouter and its activity appears in chat and History.
+Approved commands run in noninteractive Bash from your home directory, with your account's permissions. Shell access is separate from the tool-folder restrictions and is not sandboxed. Review the whole command, including redirects, pipelines and multiple lines. Command output goes to your model through the active provider, and its activity appears in chat and History.
 
 Commands have a 30-second execution limit. Combined output is bounded while it is captured and returned text is capped at 20,000 characters. Ctrl+. cancels the command's process group and retains the partial answer with Stopped status. App shutdown also cancels running commands. Ordinary background children are cleaned up when the command ends. Ntikuma removes its API-key override variable and Bash startup hooks from the child environment.
 
@@ -357,7 +382,7 @@ Run `wails3 doctor` and check the GTK4 and WebKitGTK 6.0 development packages. T
 | Conversations | `~/.local/share/ntikuma/ntikuma.db` |
 | Temporary recordings | `~/.cache/ntikuma/voice/` |
 | Installer startup log | `~/.cache/ntikuma/startup.log` |
-| OpenRouter key | GNOME Keyring, service `ntikuma` |
+| OpenRouter and provider keys | GNOME Keyring, service `ntikuma` |
 
 `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_CACHE_HOME` override their respective base directories. Temporary recordings are removed after transcription or cancellation. Retention runs when Ntikuma starts; zero days keeps chats indefinitely.
 

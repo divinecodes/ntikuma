@@ -14,6 +14,7 @@ type messageMeta struct {
 	Stopped   bool                  `json:"stopped,omitempty"`
 	Error     string                `json:"error,omitempty"`
 	CutOff    bool                  `json:"cutOff,omitempty"`
+	Provider  string                `json:"provider,omitempty"` // a direct provider's name when it answered
 	// Reasoning is a direct provider's reasoning_content, replayed only to
 	// ReasoningFrom (a connection ID). It's never shown.
 	Reasoning     string `json:"reasoning,omitempty"`
