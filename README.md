@@ -1,5 +1,15 @@
 # Ntikuma
 
+[![CI](https://github.com/divinecodes/ntikuma/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/divinecodes/ntikuma/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/divinecodes/ntikuma)](https://github.com/divinecodes/ntikuma/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/divinecodes/ntikuma)](LICENSE)
+[![Go version](https://img.shields.io/github/go-mod/go-version/divinecodes/ntikuma)](go.mod)
+[![Website](https://img.shields.io/website?url=https%3A%2F%2Fdivinecodes.github.io%2Fntikuma%2F&label=website)](https://divinecodes.github.io/ntikuma/)
+
+**[Website](https://divinecodes.github.io/ntikuma/)** · **[Download the latest .deb](https://github.com/divinecodes/ntikuma/releases/latest)** · [Installation](INSTALLATION.md) · [Privacy](PRIVACY.md)
+
+![Ntikuma](web/assets/og.jpg)
+
 A GNOME popup assistant for quick questions. Open it with Super+Space, type or dictate a question, and dismiss it when you are done. Answers stream from OpenRouter, or directly from OpenAI, Anthropic, Ollama or another OpenAI-compatible API you add in Preferences. Conversations stay in a local SQLite database, and voice transcription supports local Qwen3-ASR, Parakeet, Cohere Transcribe, or a separately installed whisper.cpp server.
 
 Built with Go, Wails v3.0.0-beta.34, and Svelte 5.
