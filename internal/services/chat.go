@@ -411,13 +411,19 @@ func conversationChars(msgs []openrouter.Message) int {
 }
 
 // turnChars counts replayed reasoning and tool calls too: they take space in
-// the window.
+// the window. Anthropic sends a turn's blocks, thinking included, in place of
+// its text and calls; other providers send the text with or without them, so
+// the larger of the two is counted.
 func turnChars(m openrouter.Message) int {
 	n := len(m.Content) + len(m.Reasoning)
 	for _, call := range m.ToolCalls {
 		n += len(call.Function.Name) + len(call.Function.Arguments)
 	}
-	return n
+	blocks := 0
+	for _, raw := range m.ReasoningDetails {
+		blocks += len(raw)
+	}
+	return max(n, blocks)
 }
 
 // contextSizer is an LLM that can look up its models' context windows.

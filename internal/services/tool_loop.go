@@ -173,6 +173,10 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 			return all, err
 		}
 		flush()
+		// Nothing runs whose result couldn't be sent.
+		if limit.tokens > 0 && (limit.toolRoom()-requestChars(req))/len(res.ToolCalls) < minToolResultChars {
+			return all, limit.full()
+		}
 		for i, call := range res.ToolCalls {
 			if err := ctx.Err(); err != nil {
 				return all, err
@@ -224,12 +228,10 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 			}
 			content := record.Output
 			if limit.tokens > 0 {
-				// Results left in this step share what's left of the window.
+				// Results left in this step share what's left of the window,
+				// never less than minToolResultChars each (checked above).
 				room := (limit.toolRoom() - requestChars(req)) / (len(res.ToolCalls) - i)
 				if len(content) > room {
-					if room < minToolResultChars {
-						return all, limit.full()
-					}
 					content = truncateUTF8(content, room-len(windowNote)) + windowNote
 				}
 			}

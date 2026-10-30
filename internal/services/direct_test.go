@@ -377,13 +377,26 @@ func TestToolContinuationsStayInsideTheWindow(t *testing.T) {
 		})
 	}
 
+	t.Run("under 500 characters left", func(t *testing.T) {
+		// Measure everything but the question and the result, then ask a
+		// question that leaves 300 characters for the result.
+		requests, _ := run(t, ollama, "q", "a.md")
+		base := requestChars(requests[1]) - len("q") - len(toolReplies(requests[1])[0])
+		question := strings.Repeat("q", window*charsPerToken*3/4-base-300)
+		requests, terminal := run(t, ollama, question, "a.md")
+		if ev, ok := terminal.(ErrorEvent); !ok || !strings.Contains(ev.Error, "context window") || len(requests) != 1 {
+			t.Fatalf("terminal %+v after %d requests", terminal, len(requests))
+		}
+	})
+
 	t.Run("no room left", func(t *testing.T) {
 		requests, terminal := run(t, ollama, strings.Repeat("q", 12_000), "a.md")
 		ev, ok := terminal.(ErrorEvent)
 		if !ok || !strings.Contains(ev.Error, "Ollama's 4096-token context window") || len(requests) != 1 {
 			t.Fatalf("terminal %+v after %d requests", terminal, len(requests))
 		}
-		if len(ev.Activity) != 1 {
+		// The file isn't read when its result couldn't be sent.
+		if len(ev.Activity) != 0 {
 			t.Fatalf("activity %+v", ev.Activity)
 		}
 	})

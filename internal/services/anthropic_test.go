@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -164,4 +166,69 @@ func TestAnthropicModelsAreSuggested(t *testing.T) {
 	if got := sent()[0]; got.path != "/v1/models?limit=1000" || got.key != "fake-anthropic-key" {
 		t.Fatalf("request %+v", got)
 	}
+}
+
+func TestAnthropicThinkingCountsTowardTheWindow(t *testing.T) {
+	const window = 4096
+	root := t.TempDir()
+	path := filepath.Join(root, "notes.md")
+	if err := os.WriteFile(path, []byte(strings.Repeat("All work and no play makes a dull answer. ", 800)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(t *testing.T, thinking int) ([]anthropicRequest, any) {
+		srv, sent := anthropicServer(t, func(step int, w http.ResponseWriter) {
+			if step > 0 {
+				claudeText("Done.")(w)
+				return
+			}
+			chunk, _ := json.Marshal(strings.Repeat("Let me read the notes first. ", thinking/29))
+			input, _ := json.Marshal(fileCall("toolu_1", "read_file", path).Function.Arguments)
+			claudeEvents(
+				`{"type":"message_start","message":{"model":"claude-opus-5-5"}}`,
+				`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`,
+				`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":`+string(chunk)+`}}`,
+				`{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"fixture-signature"}}`,
+				`{"type":"content_block_stop","index":0}`,
+				`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"read_file","input":{}}}`,
+				`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":`+string(input)+`}}`,
+				`{"type":"content_block_stop","index":1}`,
+				`{"type":"message_delta","delta":{"stop_reason":"tool_use"}}`,
+				`{"type":"message_stop"}`)(w)
+		})
+		d := newDirect(t, config.Connection{Kind: config.KindAnthropic, Name: "Anthropic", BaseURL: srv.URL, DefaultModel: "claude-opus-5-5", ContextTokens: window}, "fake-anthropic-key")
+		enableFileTools(t, d.chat, root)
+		if _, err := d.chat.Send(SendRequest{Text: "summarise my notes"}); err != nil {
+			t.Fatal(err)
+		}
+		terminal := wait(t, d.rec)
+		return sent(), terminal
+	}
+
+	t.Run("the result is shortened around the thinking", func(t *testing.T) {
+		requests, terminal := run(t, 8000)
+		if _, ok := terminal.(DoneEvent); !ok || len(requests) != 2 {
+			t.Fatalf("terminal %+v after %d requests", terminal, len(requests))
+		}
+		// Measured on the wire, where the thinking goes back with the call.
+		// The JSON around each block adds a little to the 3/4 estimate.
+		body := requests[1].body
+		if chars := len(body["system"]) + len(body["tools"]) + len(body["messages"]); chars > window*charsPerToken*7/8 {
+			t.Fatalf("continuation is %d characters", chars)
+		}
+		if !strings.Contains(string(body["messages"]), "[truncated to fit the context window]") {
+			t.Fatal("tool result wasn't shortened")
+		}
+	})
+
+	t.Run("thinking that fills the window", func(t *testing.T) {
+		requests, terminal := run(t, 14_000)
+		ev, ok := terminal.(ErrorEvent)
+		if !ok || !strings.Contains(ev.Error, "Anthropic's 4096-token context window") || len(requests) != 1 {
+			t.Fatalf("terminal %+v after %d requests", terminal, len(requests))
+		}
+		// Nothing runs whose result couldn't be sent.
+		if len(ev.Activity) != 0 {
+			t.Fatalf("activity %+v", ev.Activity)
+		}
+	})
 }
