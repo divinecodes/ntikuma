@@ -114,6 +114,15 @@ export function externalLinks(node: HTMLElement) {
 }
 
 /** "~anthropic/claude-sonnet-latest" -> "Claude Sonnet", "openai/gpt-5.1" -> "GPT-5.1". */
+// The note above an answer: the fallback model that answered, and the
+// direct provider it came from. Empty for a default OpenRouter answer.
+export function answerNote(m: { model?: string; fallback?: boolean; provider?: string }): string {
+    const fallback = Boolean(m.fallback && m.model);
+    if (!fallback && !m.provider) return "";
+    const who = m.provider ? (m.model ? `${modelName(m.model)} on ${m.provider}` : m.provider) : modelName(m.model ?? "");
+    return `Answered by ${who}${fallback ? " · fallback" : ""}`;
+}
+
 export function modelName(slug: string): string {
     if (!slug) return "";
     const name = (slug.replace(/^~/, "").split("/").pop() ?? slug).replace(/-latest$/, "").replace(/:free$/, "");

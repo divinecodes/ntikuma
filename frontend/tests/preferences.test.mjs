@@ -6,6 +6,10 @@ import ts from "typescript";
 import { compileModule } from "svelte/compiler";
 
 registerHooks({
+    resolve(specifier, context, next) {
+        if (specifier === "./providers") return { url: new URL("../src/lib/providers.ts", import.meta.url).href, shortCircuit: true };
+        return next(specifier, context);
+    },
     load(url, context, next) {
         if (new URL(url).pathname.endsWith("preferences.svelte.ts")) {
             const source = ts.transpileModule(readFileSync(new URL(url), "utf8"), {
@@ -56,6 +60,286 @@ test("preferences load all fields and normalize zero fallbacks", async (t) => {
     assert.deepEqual([...prefs.settings.fallbacks], []);
     assert.equal(prefs.settings.voice.language, "en");
     assert.equal(prefs.settings.keepChatsDays, 0);
+});
+
+test("provider connections survive editing unrelated preferences", async (t) => {
+    const ollama = { id: "c-0123456789ab", kind: "openai-compatible", name: "Ollama", baseUrl: "http://localhost:11434/v1", defaultModel: "llama3.3", fallbacks: null, contextTokens: 8192, maxTokens: 0 };
+    const { prefs, calls } = await setup(t, { get: async () => ({ ...settings(), provider: "c-0123456789ab", connections: [ollama] }) });
+    assert.deepEqual([...prefs.settings.connections[0].fallbacks], []);
+    prefs.settings.systemPrompt = "Edited";
+    prefs.changed(0);
+    await prefs.flush();
+    const saved = calls.saved.at(-1);
+    assert.equal(saved.provider, "c-0123456789ab");
+    assert.deepEqual(saved.connections, [{ ...ollama, fallbacks: [] }]);
+
+    const legacy = await setup(t);
+    assert.equal(legacy.prefs.settings.provider, "");
+    assert.deepEqual([...legacy.prefs.settings.connections], []);
+});
+
+const ollamaPreset = { id: "", kind: "openai-compatible", name: "Ollama", baseUrl: "http://localhost:11434/v1", defaultModel: "", fallbacks: null, contextTokens: 4096, maxTokens: 0 };
+
+// A backend that owns connection IDs and refuses saves whose list changed.
+function connectionBackend() {
+    const backend = { stored: { ...settings(), provider: "", connections: [] }, keys: {}, saves: [], adds: 0, removes: [], keyed: [], rejected: 0 };
+    const sameIds = (a, b) => a.length === b.length && a.every((c) => b.some((d) => d.id === c.id && d.kind === c.kind));
+    backend.actions = {
+        get: async () => structuredClone(backend.stored),
+        save: async (s) => {
+            if (!sameIds(s.connections, backend.stored.connections)) { backend.rejected++; throw new Error("providers changed since Preferences opened"); }
+            backend.saves.push(structuredClone(s));
+            backend.stored = structuredClone(s);
+        },
+        presets: async () => [ollamaPreset],
+        addConnection: async (c) => {
+            backend.adds++;
+            backend.stored.connections.push({ ...c, id: `c-00000000000${backend.adds}` });
+            return structuredClone(backend.stored);
+        },
+        removeConnection: async (id) => {
+            backend.removes.push(id);
+            backend.stored.connections = backend.stored.connections.filter((c) => c.id !== id);
+            return structuredClone(backend.stored);
+        },
+        hasConnectionKey: async (id) => Boolean(backend.keys[id]),
+        setConnectionKey: async (id, key) => {
+            const c = backend.stored.connections.find((c) => c.id === id);
+            backend.keyed.push({ id, key, baseUrl: c.baseUrl });
+            backend.keys[id] = key;
+        },
+    };
+    return backend;
+}
+
+test("adding a provider selects it and its models replace OpenRouter's", async (t) => {
+    const backend = connectionBackend();
+    const { prefs } = await setup(t, backend.actions);
+    assert.deepEqual(prefs.presets.map((p) => p.name), ["Ollama"]);
+    prefs.settings.systemPrompt = "Unsaved edit";
+    prefs.changed(10_000);
+    await prefs.addConnection(prefs.presets[0]);
+    assert.equal(backend.saves[0].systemPrompt, "Unsaved edit", "pending edits are saved before the add");
+    const ollama = prefs.settings.connections[0];
+    assert.equal(ollama.id, "c-000000000001");
+    assert.equal(prefs.settings.provider, ollama.id);
+    assert.equal(prefs.modelTarget, ollama);
+    await prefs.flush();
+    assert.equal(prefs.error, "Pick a default model.");
+    prefs.modelTarget.defaultModel = " llama3.3 ";
+    prefs.changed(0);
+    await prefs.flush();
+    const saved = backend.saves.at(-1);
+    assert.equal(saved.provider, ollama.id);
+    assert.equal(saved.connections[0].defaultModel, "llama3.3");
+    assert.equal(saved.defaultModel, "test/model", "OpenRouter's model is kept");
+
+    prefs.setProvider("openrouter");
+    assert.equal(prefs.modelTarget, prefs.settings);
+    await prefs.flush();
+    assert.equal(backend.saves.at(-1).provider, "openrouter");
+});
+
+test("a direct provider suggests its own models and takes fallbacks", async (t) => {
+    const backend = connectionBackend();
+    const lists = [];
+    backend.actions.connectionModels = (id) => { const d = deferred(); lists.push({ id, ...d }); return d.promise; };
+    const { prefs } = await setup(t, backend.actions);
+    await prefs.addConnection(ollamaPreset);
+    const ollama = prefs.settings.connections[0];
+    await settle();
+    lists.at(-1).resolve([{ id: "llama3.3", name: "" }]);
+    await settle();
+    assert.equal(lists.at(-1).id, ollama.id);
+    assert.deepEqual(prefs.connectionModels.map((m) => m.id), ["llama3.3"]);
+
+    // Fallbacks belong to the provider, not OpenRouter.
+    prefs.modelTarget.defaultModel = "llama3.3";
+    assert.equal(prefs.addFallback("qwen3"), true);
+    await prefs.flush();
+    assert.deepEqual(backend.saves.at(-1).connections[0].fallbacks, ["qwen3"]);
+    assert.deepEqual(backend.saves.at(-1).fallbacks, settings().fallbacks);
+
+    // A moved address drops the list until it's saved and asked again.
+    const asked = lists.length;
+    prefs.active.baseUrl = "http://127.0.0.1:11434/v1";
+    prefs.connectionChanged(10_000);
+    assert.deepEqual(prefs.connectionModels, []);
+    await prefs.flush();
+    await settle();
+    assert.ok(lists.length > asked, "asked again after the save");
+
+    // An answer for a provider no longer shown is ignored.
+    const late = lists.at(-1);
+    prefs.setProvider("openrouter");
+    late.resolve([{ id: "stale", name: "" }]);
+    await settle();
+    assert.deepEqual(prefs.connectionModels, []);
+
+});
+
+test("a provider that can't list its models leaves typing working", async (t) => {
+    const backend = connectionBackend();
+    backend.actions.connectionModels = async () => { throw new Error("Ollama isn't running"); };
+    const { prefs } = await setup(t, backend.actions);
+    await prefs.addConnection(ollamaPreset);
+    await settle();
+    assert.equal(prefs.connectionModelsError, "Ollama isn't running");
+    assert.deepEqual(prefs.connectionModels, []);
+    prefs.modelTarget.defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    assert.equal(backend.saves.at(-1).connections[0].defaultModel, "llama3.3");
+});
+
+test("an edit made while a provider is being added saves with the new list", async (t) => {
+    const backend = connectionBackend();
+    let release;
+    const add = backend.actions.addConnection;
+    const { prefs } = await setup(t, { ...backend.actions, addConnection: (c) => { const result = add(c); return new Promise((resolve) => { release = () => resolve(result); }); } });
+    const adding = prefs.addConnection(ollamaPreset);
+    await settle();
+    prefs.settings.systemPrompt = "Typed during the add";
+    prefs.changed(0);
+    await prefs.flush();
+    release();
+    await adding;
+    await prefs.flush();
+    prefs.modelTarget.defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    const saved = backend.saves.at(-1);
+    assert.equal(saved.systemPrompt, "Typed during the add");
+    assert.equal(saved.connections.length, 1);
+    assert.equal(backend.rejected, 0, "no save went out with the old list");
+});
+
+// Holds one backend action open until release() is called.
+function held(action) {
+    const gate = deferred();
+    return { release: gate.resolve, action: async (...args) => { await gate.promise; return action(...args); } };
+}
+
+test("an edit to the active provider made while another is removed is kept", async (t) => {
+    const backend = connectionBackend();
+    const removal = held(backend.actions.removeConnection);
+    const { prefs } = await setup(t, { ...backend.actions, removeConnection: removal.action });
+    await prefs.addConnection(ollamaPreset);
+    prefs.settings.connections[0].defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.addConnection(ollamaPreset);
+    prefs.settings.connections[1].defaultModel = "qwen3";
+    prefs.changed(0);
+    const [first, second] = prefs.settings.connections;
+    prefs.setProvider(first.id);
+    await prefs.flush();
+    const removing = prefs.removeConnection(second.id);
+    await settle();
+    prefs.active.defaultModel = "llama4";
+    prefs.active.fallbacks.push("qwen3");
+    prefs.changed(0);
+    await prefs.flush();
+    removal.release();
+    await removing;
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    assert.deepEqual(prefs.settings.connections.map((c) => [c.id, c.defaultModel, [...c.fallbacks]]), [[first.id, "llama4", ["qwen3"]]]);
+    assert.equal(backend.saves.at(-1).connections[0].defaultModel, "llama4");
+    assert.deepEqual(backend.saves.at(-1).connections[0].fallbacks, ["qwen3"]);
+});
+
+test("an edit to the active provider made while another is added is kept", async (t) => {
+    const backend = connectionBackend();
+    const addition = held(backend.actions.addConnection);
+    const { prefs } = await setup(t, { ...backend.actions, addConnection: (c) => backend.adds ? addition.action(c) : backend.actions.addConnection(c) });
+    await prefs.addConnection(ollamaPreset);
+    prefs.settings.connections[0].defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.flush();
+    const first = prefs.settings.connections[0];
+    const adding = prefs.addConnection(ollamaPreset);
+    await settle();
+    prefs.active.contextTokens = 32768;
+    prefs.changed(0);
+    await prefs.flush();
+    addition.release();
+    await adding;
+    assert.notEqual(prefs.active.id, first.id, "the new provider becomes active");
+    prefs.modelTarget.defaultModel = "qwen3";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    assert.equal(prefs.settings.connections.find((c) => c.id === first.id).contextTokens, 32768);
+    assert.equal(backend.saves.at(-1).connections.find((c) => c.id === first.id).contextTokens, 32768);
+});
+
+test("removing a provider leaves no stale list to save, and the active one stays", async (t) => {
+    const backend = connectionBackend();
+    const { prefs } = await setup(t, backend.actions);
+    await prefs.addConnection(ollamaPreset);
+    await prefs.addConnection(ollamaPreset);
+    assert.equal(prefs.settings.connections.length, 1, "an unfinished provider must be fixed first");
+    assert.match(prefs.connectionError, /Fix the error/);
+    prefs.settings.connections[0].defaultModel = "llama3.3";
+    prefs.changed(0);
+    await prefs.addConnection(ollamaPreset);
+    prefs.settings.connections[1].defaultModel = "qwen3";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    const [first, second] = prefs.settings.connections;
+    await prefs.removeConnection(second.id);
+    assert.deepEqual(backend.removes, [], "the active provider can't be removed");
+    prefs.setProvider("openrouter");
+    await prefs.removeConnection(second.id);
+    assert.deepEqual(backend.removes, [second.id]);
+    assert.deepEqual(prefs.settings.connections.map((c) => c.id), [first.id]);
+    prefs.settings.systemPrompt = "After remove";
+    prefs.changed(0);
+    await prefs.flush();
+    assert.equal(prefs.error, "");
+    assert.equal(backend.saves.at(-1).systemPrompt, "After remove");
+});
+
+test("a provider key is saved after its address, so it binds to the new one", async (t) => {
+    const backend = connectionBackend();
+    const { prefs, calls } = await setup(t, backend.actions);
+    await prefs.addConnection(ollamaPreset);
+    const ollama = prefs.settings.connections[0];
+    ollama.defaultModel = "llama3.3";
+    ollama.baseUrl = "https://ollama.example.com/v1";
+    prefs.connectionChanged(10_000);
+    assert.equal(prefs.connectionHasKey, false);
+    prefs.connectionKeyInput = " fake-test-key ";
+    await prefs.saveConnectionKey();
+    assert.deepEqual(backend.keyed, [{ id: ollama.id, key: "fake-test-key", baseUrl: "https://ollama.example.com/v1" }]);
+    assert.equal(prefs.connectionHasKey, true);
+    assert.equal(prefs.connectionKeyInput, "");
+
+    // An address change that can't be saved holds the key back.
+    ollama.defaultModel = "";
+    prefs.connectionChanged(10_000);
+    prefs.connectionKeyInput = "fake-other-key";
+    await prefs.saveConnectionKey();
+    assert.equal(backend.keyed.length, 1);
+    assert.equal(prefs.connectionKeyInput, "fake-other-key");
+    assert.ok(prefs.connectionError);
+    void calls;
+});
+
+test("a late key status for another provider is ignored", async (t) => {
+    const backend = connectionBackend();
+    let release;
+    const { prefs } = await setup(t, { ...backend.actions, hasConnectionKey: (id) => id === "c-000000000001" ? new Promise((resolve) => { release = () => resolve(true); }) : Promise.resolve(false) });
+    await prefs.addConnection(ollamaPreset);
+    const pending = prefs.refreshConnectionKey();
+    prefs.setProvider("openrouter");
+    await prefs.refreshConnectionKey();
+    release?.();
+    await pending;
+    assert.equal(prefs.connectionHasKey, false);
 });
 
 test("local tools fail closed for missing or explicitly empty roots and preserve the shell flag", async (t) => {

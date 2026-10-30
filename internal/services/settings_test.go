@@ -12,8 +12,11 @@ import (
 
 type settingsKeys struct{ key string }
 
-func (k *settingsKeys) APIKey() (string, error)    { return k.key, nil }
-func (k *settingsKeys) SetAPIKey(key string) error { k.key = key; return nil }
+func (k *settingsKeys) APIKey() (string, error)                       { return k.key, nil }
+func (k *settingsKeys) SetAPIKey(key string) error                    { k.key = key; return nil }
+func (k *settingsKeys) ConnectionKey(string, string) (string, error)  { return "", nil }
+func (k *settingsKeys) SetConnectionKey(string, string, string) error { return nil }
+func (k *settingsKeys) DeleteConnectionKey(string) error              { return nil }
 
 func TestPreferencesPersistAllFieldsWithoutAPIKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "preferences.json")

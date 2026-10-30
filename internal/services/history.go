@@ -41,6 +41,8 @@ type MessageView struct {
 	Error       string                `json:"error,omitempty"`
 	// CutOff marks an answer that stopped early and can be continued.
 	CutOff bool `json:"cutOff,omitempty"`
+	// Provider names the direct provider that answered; empty for OpenRouter.
+	Provider string `json:"provider,omitempty"`
 }
 
 // finds chats by title or message text. Matched terms in snippets are
@@ -66,6 +68,7 @@ func (h *HistoryService) Get(chatID string) (ChatDetail, error) {
 		meta := decodeMeta(m.Meta)
 		v.Citations, v.Searches = meta.Citations, meta.Searches
 		v.Activity, v.Stopped, v.Error, v.CutOff = activityViews(meta.Activity), meta.Stopped, meta.Error, meta.CutOff
+		v.Provider = meta.Provider
 		if m.Attachments != "" {
 			_ = json.Unmarshal([]byte(m.Attachments), &v.Attachments)
 			// The UI only needs labels; keep clipboard and image data in storage.

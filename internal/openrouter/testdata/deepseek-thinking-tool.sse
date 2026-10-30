@@ -1,0 +1,12 @@
+data: {"id":"fixture","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":"The user wants a demo fact. "},"finish_reason":null}]}
+
+data: {"id":"fixture","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":null,"reasoning_content":"I should call get_demo_fact."},"finish_reason":null}]}
+
+data: {"id":"fixture","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":null,"tool_calls":[{"index":0,"id":"call_fixture_0","type":"function","function":{"name":"get_demo_fact","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"fixture","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":null,"tool_calls":[{"index":0,"function":{"arguments":"{\"topic\":\"tides\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"fixture","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"content":null},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+

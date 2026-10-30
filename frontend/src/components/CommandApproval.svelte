@@ -14,7 +14,7 @@
 <section class="command-approval" role="group" aria-label="Command approval" aria-busy={busy}>
   <h2>Run this command?</h2>
   <textarea class="command-text" aria-label="Exact command" readonly spellcheck={false} rows={Math.min(6, Math.max(2, approval.command.split("\n").length))} value={approval.command}></textarea>
-  <p>Runs in <span class="directory">{approval.workingDirectory}</span>. Commands can change files outside your tool folders. Output is sent to your model through OpenRouter.</p>
+  <p>Runs in <span class="directory">{approval.workingDirectory}</span>. Commands can change files outside your tool folders. Output is sent to your model through {approval.provider || "OpenRouter"}.</p>
   <p>Approval expires after two minutes.</p>
   {#if error}<p class="approval-error" role="alert">{error}</p>{/if}
   <div class="actions">

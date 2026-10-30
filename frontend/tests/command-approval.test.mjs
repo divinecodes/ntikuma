@@ -37,3 +37,12 @@ test("approval cards disable both buttons while deciding and report RPC errors s
     assert.equal(doc.querySelector('[role="alert"]').textContent, "<script>bad()</script>");
     assert.equal(doc.querySelector("script"), null);
 });
+
+test("approval cards name where the command's output goes", (t) => {
+    for (const [provider, expected] of [["Ollama", "through Ollama"], ["", "through OpenRouter"], [undefined, "through OpenRouter"]]) {
+        const approval = { command: "df -h", workingDirectory: "/home/test", expiresAt: new Date().toISOString(), provider };
+        const dom = new JSDOM(render(CommandApproval, { props: { approval, decide: () => {} } }).body);
+        t.after(() => dom.window.close());
+        assert.match(dom.window.document.body.textContent, new RegExp(`Output is sent to your model ${expected}\\.`));
+    }
+});

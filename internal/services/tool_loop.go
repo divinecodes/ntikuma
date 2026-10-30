@@ -18,7 +18,12 @@ const (
 	maxToolSteps         = 8
 	maxLocalCalls        = 24
 	maxContinuationBytes = 4 * 1024 * 1024
+	// minToolResultChars is the smallest shortened tool result worth sending;
+	// below it the answer stops instead.
+	minToolResultChars = 500
 )
+
+const windowNote = "\n[truncated to fit the context window]"
 
 type turnResult struct {
 	openrouter.Result
@@ -46,7 +51,9 @@ func toolRegistry(settings config.Settings) (*tools.Registry, error) {
 // stored user/assistant text and screenshots, never calls, results or reasoning.
 // hiddenAtStart is the hidden-files setting when the answer began. Like local
 // tools and shell commands, turning it on takes effect from the next question.
-func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Request, hiddenAtStart bool, chatID, answerID string, onDelta func(string), flush func()) (all turnResult, err error) {
+// With a known window, tool results are shortened so each continuation fits
+// in three quarters of it; when that can't leave a useful part, it stops.
+func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Request, limit contextLimit, hiddenAtStart bool, chatID, answerID string, onDelta func(string), flush func()) (all turnResult, err error) {
 	var serverTools []openrouter.Tool
 	localAtStart := false
 	shellAtStart := false
@@ -124,6 +131,8 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 		}
 		all.Fallback = all.Fallback || res.Fallback
 		all.FinishReason = res.FinishReason
+		// The last step's reasoning led to the answer that's saved.
+		all.Reasoning = res.Reasoning
 		for _, citation := range res.Citations {
 			if citation.URL != "" && !seenCitations[citation.URL] {
 				seenCitations[citation.URL] = true
@@ -164,7 +173,11 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 			return all, err
 		}
 		flush()
-		for _, call := range res.ToolCalls {
+		// Nothing runs whose result couldn't be sent.
+		if limit.tokens > 0 && (limit.toolRoom()-requestChars(req))/len(res.ToolCalls) < minToolResultChars {
+			return all, limit.full()
+		}
+		for i, call := range res.ToolCalls {
 			if err := ctx.Err(); err != nil {
 				return all, err
 			}
@@ -213,7 +226,16 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 			if err := ctx.Err(); err != nil {
 				return all, err
 			}
-			if err := appendMessage(openrouter.Message{Role: "tool", ToolCallID: call.ID, Content: record.Output}); err != nil {
+			content := record.Output
+			if limit.tokens > 0 {
+				// Results left in this step share what's left of the window,
+				// never less than minToolResultChars each (checked above).
+				room := (limit.toolRoom() - requestChars(req)) / (len(res.ToolCalls) - i)
+				if len(content) > room {
+					content = truncateUTF8(content, room-len(windowNote)) + windowNote
+				}
+			}
+			if err := appendMessage(openrouter.Message{Role: "tool", ToolCallID: call.ID, Content: content}); err != nil {
 				return all, err
 			}
 		}

@@ -89,7 +89,7 @@ func TestFileToolHTTPContinuationAcrossSSEAndJSON(t *testing.T) {
 				fmt.Fprint(w, "data: [DONE]\n\n")
 			}))
 			defer server.Close()
-			svc.newLLM = func(key string) LLM { client := openrouter.New(key); client.BaseURL = server.URL; return client }
+			svc.newLLM = func(ep endpoint) LLM { client := openrouter.New(ep.key); client.BaseURL = server.URL; return client }
 			res, err := svc.Send(SendRequest{Text: "Read my todo", Web: web})
 			if err != nil {
 				t.Fatal(err)

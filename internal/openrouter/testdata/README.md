@@ -75,3 +75,19 @@ Client transport limits are 64 calls per response, 64 KiB of arguments per call,
 256 KiB of arguments in total, and 2 MiB of reasoning continuation state. These
 are parser limits, separate from the tighter execution budgets planned for the
 chat loop. Local execution and approval controls are not enabled by Phase 14A.
+
+## Direct providers, documented shapes (not live captures)
+
+Written by hand on 2026-10-30 for the direct-provider work. They follow each
+provider's documented wire format and haven't been compared with a live
+response yet; replace them with sanitized captures after the live checks.
+
+- `deepseek-thinking-tool.sse` and `.json`: DeepSeek thinking mode with a tool
+  call. `reasoning_content` sits beside `content` (DeepSeek API docs, Thinking
+  Mode). With `tools` in a request, DeepSeek wants it back on the assistant
+  turn, or it returns 400.
+- `openai-refusal.sse` and `.json`: an OpenAI refusal, sent in `refusal`
+  instead of `content`, finishing with `stop`.
+- `ollama-tool-stream.sse`: an Ollama `/v1/chat/completions` tool call sent
+  whole in one chunk with its index and ID, then `finish_reason: "tool_calls"`.
+  Ollama's docs don't show the chunk; this shape is assumed.

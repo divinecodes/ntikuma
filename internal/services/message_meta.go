@@ -14,7 +14,15 @@ type messageMeta struct {
 	Stopped   bool                  `json:"stopped,omitempty"`
 	Error     string                `json:"error,omitempty"`
 	CutOff    bool                  `json:"cutOff,omitempty"`
+	Provider  string                `json:"provider,omitempty"` // a direct provider's name when it answered
+	// Reasoning is a direct provider's reasoning_content, replayed only to
+	// ReasoningFrom (a connection ID). It's never shown.
+	Reasoning     string `json:"reasoning,omitempty"`
+	ReasoningFrom string `json:"reasoningFrom,omitempty"`
 }
+
+// maxStoredReasoning bounds the reasoning saved with an answer.
+const maxStoredReasoning = 32 * 1024
 
 // Calls and bounded outputs stay in metadata, for display rather than replay.
 // Public history/events expose only ToolActivity summaries.

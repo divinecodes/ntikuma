@@ -13,6 +13,11 @@ import (
 )
 
 type Settings struct {
+	// Provider is where questions go: "" or "openrouter", or a Connection ID.
+	Provider    string       `json:"provider"`
+	Connections []Connection `json:"connections"`
+
+	// DefaultModel and Fallbacks are OpenRouter's. Each connection has its own.
 	DefaultModel string `json:"defaultModel"`
 
 	Fallbacks []string `json:"fallbacks"`
@@ -137,10 +142,39 @@ func Defaults() Settings {
 	}
 }
 
+// Models is the active provider's default model and fallbacks, without
+// repeats. It's empty when the provider is unknown.
 func (s Settings) Models() []string {
+	models, _ := s.ModelChain("")
+	return models
+}
+
+// ModelChain is the chain for one question: override (or the default model)
+// first, then the active provider's fallbacks. OpenRouter accepts any
+// override. A direct connection accepts only its own models, since anything
+// else comes from a picker that still shows another provider's.
+func (s Settings) ModelChain(override string) ([]string, error) {
+	conn, err := s.ActiveConnection()
+	if err != nil {
+		return nil, err
+	}
+	first, fallbacks := s.DefaultModel, s.Fallbacks
+	if conn != nil {
+		first, fallbacks = conn.DefaultModel, conn.Fallbacks
+		if override != "" && override != first && !slices.Contains(fallbacks, override) {
+			return nil, fmt.Errorf("%s isn't set up for %s. Pick one of its models", override, conn.Name)
+		}
+	}
+	if override != "" {
+		first = override
+	}
+	return dedupe(append([]string{first}, fallbacks...)), nil
+}
+
+func dedupe(models []string) []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, m := range append([]string{s.DefaultModel}, s.Fallbacks...) {
+	for _, m := range models {
 		if m == "" || seen[m] {
 			continue
 		}
@@ -165,6 +199,12 @@ func (s Settings) Validate() error {
 		return err
 	}
 	if err := validateToolRoots(s.ToolRoots); err != nil {
+		return err
+	}
+	if err := validateConnections(s.Connections); err != nil {
+		return err
+	}
+	if err := s.validateProvider(); err != nil {
 		return err
 	}
 	return s.WebSearch.validate()
@@ -242,9 +282,10 @@ func (p Paths) Ensure() error {
 }
 
 type Manager struct {
-	path string
-	mu   sync.RWMutex
-	cur  Settings
+	path   string
+	saveMu sync.Mutex // serializes writes, so Update's read and write are one step
+	mu     sync.RWMutex
+	cur    Settings
 }
 
 // Load reads the settingts from path, filling anything missing from Defaults.
@@ -270,6 +311,10 @@ func Load(path string) (*Manager, error) {
 	if err := m.cur.WebSearch.validate(); err != nil {
 		return nil, fmt.Errorf("invalid web search settings in %s: %w", path, err)
 	}
+	migrateConnections(m.cur.Connections)
+	if err := validateConnections(m.cur.Connections); err != nil {
+		return nil, fmt.Errorf("invalid provider connections in %s: %w", path, err)
+	}
 	return m, nil
 }
 
@@ -277,15 +322,41 @@ func Load(path string) (*Manager, error) {
 func (m *Manager) Get() Settings {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.cur
+	s := m.cur.clone()
 	s.Fallbacks = append([]string(nil), m.cur.Fallbacks...)
-	s.ToolRoots = slices.Clone(m.cur.ToolRoots)
+	return s
+}
+
+func (s Settings) clone() Settings {
+	s.Fallbacks = slices.Clone(s.Fallbacks)
+	s.ToolRoots = slices.Clone(s.ToolRoots)
+	s.Connections = cloneConnections(s.Connections)
 	return s
 }
 
 func (m *Manager) Save(s Settings) error {
-	s.Fallbacks = slices.Clone(s.Fallbacks)
-	s.ToolRoots = slices.Clone(s.ToolRoots)
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+	return m.save(s)
+}
+
+// Update saves change(current settings). No other save happens in between,
+// so a check in change still holds when the result is written.
+func (m *Manager) Update(change func(Settings) (Settings, error)) (Settings, error) {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+	s, err := change(m.Get())
+	if err != nil {
+		return Settings{}, err
+	}
+	if err := m.save(s); err != nil {
+		return Settings{}, err
+	}
+	return m.Get(), nil
+}
+
+func (m *Manager) save(s Settings) error {
+	s = s.clone()
 	s.Voice = s.Voice.Normalized()
 	if err := s.Validate(); err != nil {
 		return err

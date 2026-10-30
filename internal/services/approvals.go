@@ -60,8 +60,9 @@ func (s *ChatService) awaitApproval(ctx context.Context, key approvalKey, call o
 		return errors.New("command approval belongs to an inactive answer")
 	}
 	s.approvals[key] = pending
+	provider := answer.provider
 	s.mu.Unlock()
-	event := ApprovalEvent{ChatID: key.chatID, MessageID: key.messageID, CallID: key.callID, Command: command, WorkingDirectory: home, ExpiresAt: pending.expires, State: "pending"}
+	event := ApprovalEvent{ChatID: key.chatID, MessageID: key.messageID, CallID: key.callID, Command: command, WorkingDirectory: home, ExpiresAt: pending.expires, State: "pending", Provider: provider}
 	outcome := "canceled"
 	defer func() {
 		s.mu.Lock()

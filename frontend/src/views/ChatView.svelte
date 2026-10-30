@@ -2,10 +2,11 @@
     import { tick } from "svelte";
     import { Clipboard } from "@wailsio/runtime";
     import { app } from "../lib/state.svelte";
-    import { copyCode, externalLinks, modelName, renderMarkdown } from "../lib/format";
+    import { answerNote, copyCode, externalLinks, modelName, renderMarkdown } from "../lib/format";
     import Icon from "../components/Icon.svelte";
     import Chips from "../components/Chips.svelte";
     import ModelPicker from "../components/ModelPicker.svelte";
+    import { activeDefaultModel } from "../lib/providers";
     import WebToggle from "../components/WebToggle.svelte";
     import Sources from "../components/Sources.svelte";
     import ToolActivity from "../components/ToolActivity.svelte";
@@ -44,7 +45,7 @@
         }
     }
 
-    const  streamingModel = $derived(app.modelOverride || app.settings?.defaultModel || "");
+    const  streamingModel = $derived(app.modelOverride || activeDefaultModel(app.settings));
     const lastId = $derived(app.messages[app.messages.length - 1]?.id);
 </script>
 
@@ -71,9 +72,9 @@
             </div>
         {:else}
             <div class="assistant">
-                {#if m.fallback && m.model}
+                {#if answerNote(m)}
                     <div class="meta">
-                        <span class="fallback"><Icon name="swap" size={13} stroke={2} />Answered by {modelName(m.model)} · fallback</span>
+                        <span class="fallback">{#if m.fallback}<Icon name="swap" size={13} stroke={2} />{/if}{answerNote(m)}</span>
                     </div>
                 {/if}
                 <div class="md" class:streaming={m.streaming} use:externalLinks use:copyCode>{@html renderMarkdown(m.content)}</div>

@@ -11,14 +11,18 @@
     ...prefsApi,
     checkVoice: voiceApi.checkSetup,
     pickVoiceFolder: voiceApi.pickModelFolder,
-    saved: (settings) => app.applySettings(settings),
-    keyChanged: (hasKey) => { app.hasKey = hasKey; },
+    saved: (settings) => { app.applySettings(settings); void app.refreshProvider(); },
+    keyChanged: () => { void app.refreshProvider(); },
     clearHistory: () => historyApi.clear(),
     cleared: () => app.historyCleared(),
     canClear: () => !app.streaming,
   });
   const s = $derived(prefs.settings);
   const models = $derived(prefs.models);
+  const active = $derived(prefs.active);
+  const target = $derived(prefs.modelTarget);
+  const local = $derived(active ? /^http:\/\/(localhost|127\.|\[::1\])/i.test(active.baseUrl) : false);
+  let newPreset = $state(0);
   const localModel = $derived(s?.voice.engine === "qwen3-asr" ? s.voice.qwen : s?.voice.engine === "parakeet" ? s.voice.parakeet : s?.voice.engine === "cohere-transcribe" ? s.voice.cohere : null);
   let newFallback = $state("");
   let newToolFolder = $state("");
@@ -55,6 +59,11 @@
     <option value={m.id}>{m.name}</option>
   {/each}
 </datalist>
+<datalist id="connection-models">
+  {#each prefs.connectionModels as m (m.id)}
+    <option value={m.id}>{m.name}</option>
+  {/each}
+</datalist>
 
 <div class="scroll">
   {#if prefs.loading}<p role="status">Loading preferences...</p>{/if}
@@ -67,28 +76,99 @@
     <button type="button" class="btn" onclick={() => prefs.flush()}>Retry saving</button>
   {/if}
 
-  {#if s}
+  {#if s && target}
+    <section>
+      <h2>Provider</h2>
+      <p class="desc">Questions go through OpenRouter, or straight to a provider you add here. Web search needs OpenRouter.</p>
+      {#if active}
+        <p class="desc">
+          {#if local}
+            A server on this computer can still pass questions on. Ollama's cloud models run on Ollama's servers; to keep everything here, use local models and start Ollama with <code>OLLAMA_NO_CLOUD=1</code>.
+          {:else}
+            Questions, attachments and tool results go straight to {active.name}. Its own data and retention policies apply.
+          {/if}
+        </p>
+      {/if}
+      <div class="list">
+        <div class="row">
+          <div class="text"><label for="provider">Send questions to</label><small>{active ? active.baseUrl : "openrouter.ai"}</small></div>
+          <select id="provider" class="field" value={s.provider || "openrouter"} disabled={prefs.connectionBusy} onchange={(e) => prefs.setProvider(e.currentTarget.value)}>
+            <option value="openrouter">OpenRouter</option>
+            {#each s.connections as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
+          </select>
+        </div>
+        {#if active}
+          <div class="row">
+            <div class="text"><label for="provider-name">Name</label></div>
+            <input id="provider-name" class="field" bind:value={active.name} oninput={changed} />
+          </div>
+          <div class="row">
+            <div class="text"><label for="provider-url">Address</label><small>The API's base URL. http:// only for this computer.</small></div>
+            <input id="provider-url" class="field mono" bind:value={active.baseUrl} oninput={() => prefs.connectionChanged()} spellcheck={false} />
+          </div>
+          <div class="row">
+            <div class="text">
+              <label for="provider-key">API key</label>
+              <small>{prefs.connectionHasKey ? "A key is saved for this address" : local ? "Optional for a server on this computer" : "Not set for this address"}</small>
+            </div>
+            <input id="provider-key" class="field" type="password" placeholder={prefs.connectionHasKey ? "••••••••" : ""} bind:value={prefs.connectionKeyInput} autocomplete="off" disabled={prefs.connectionKeySaving} />
+            <button type="button" class="btn" disabled={!prefs.connectionKeyInput.trim() || prefs.connectionKeySaving} onclick={() => prefs.saveConnectionKey()}>{prefs.connectionKeySaving ? "Saving..." : prefs.connectionHasKey ? "Replace" : "Save"}</button>
+          </div>
+          <div class="row">
+            <div class="text">
+              <label for="provider-context">Context window</label>
+              <small>Tokens the model reads at once; 0 if unknown. Required for servers on this computer. For Ollama, see the CONTEXT column of <code>ollama ps</code>, or raise it with OLLAMA_CONTEXT_LENGTH.</small>
+            </div>
+            <input id="provider-context" class="field narrow" type="number" min="0" step="1" bind:value={active.contextTokens} oninput={changed} />
+          </div>
+        {/if}
+        {#each s.connections as c (c.id)}
+          {#if c.id !== active?.id}
+            <div class="row">
+              <div class="text"><span>{c.name}</span><small class="mono">{c.baseUrl}</small></div>
+              <button type="button" class="icon-btn" aria-label="Remove {c.name}" disabled={prefs.connectionBusy} onclick={() => prefs.removeConnection(c.id)}>
+                <Icon name="x" stroke={2} />
+              </button>
+            </div>
+          {/if}
+        {/each}
+        {#if prefs.presets.length && s.connections.length < 8}
+          <div class="row">
+            <label for="add-provider" class="sr-only">Provider to add</label>
+            <select id="add-provider" class="field wide" bind:value={newPreset}>
+              {#each prefs.presets as p, i (i)}<option value={i}>{p.name}</option>{/each}
+            </select>
+            <button type="button" class="btn" disabled={prefs.connectionBusy} onclick={() => prefs.addConnection(prefs.presets[newPreset])}><Icon name="plus" size={14} stroke={2.2} />Add provider</button>
+          </div>
+        {/if}
+        {#if prefs.connectionError}<p class="error" role="alert">{prefs.connectionError}</p>{/if}
+      </div>
+    </section>
+
     <section>
       <h2>Models</h2>
-      <p class="desc">Every chat starts on the default. Fallbacks are tried in order when it's down, rate-limited or refuses.</p>
-      {#if prefs.modelsLoading}<p class="desc" role="status">Loading model suggestions...</p>{/if}
-      {#if prefs.modelsError}
+      <p class="desc">{active ? `Every chat starts on ${active.name}'s default model. Fallbacks are tried in order when it's down, rate-limited or doesn't have the model.` : "Every chat starts on the default. Fallbacks are tried in order when it's down, rate-limited or refuses."}</p>
+      {#if active && prefs.connectionModelsError}
+        <p class="desc">No model suggestions from {active.name}: {prefs.connectionModelsError}. You can still enter a model ID.</p>
+      {/if}
+      {#if !active && prefs.modelsLoading}<p class="desc" role="status">Loading model suggestions...</p>{/if}
+      {#if !active && prefs.modelsError}
         <p class="error" role="alert">Couldn't load model suggestions: {prefs.modelsError}. You can still enter a model ID.</p>
         <button type="button" class="btn" onclick={() => prefs.loadModels()}>Retry model suggestions</button>
       {/if}
       <div class="list">
         <div class="row">
-          <div class="text"><label for="default-model">Default model</label><small>{modelName(s.defaultModel)}</small></div>
-          <input id="default-model" class="field" list="models" bind:value={s.defaultModel} oninput={changed} />
+          <div class="text"><label for="default-model">Default model</label><small>{modelName(target.defaultModel)}</small></div>
+          <input id="default-model" class="field" list={active ? "connection-models" : "models"} placeholder={active ? `Model ID, e.g. ${active.kind === "anthropic" ? "claude-opus-5-5" : active.kind === "openai" ? "gpt-6.1-sol" : "llama3.3"}` : ""} bind:value={target.defaultModel} oninput={changed} />
         </div>
-        {#each s.fallbacks as f, i (i)}
+        {#each target.fallbacks as f, i (i)}
           <div class="row">
             <span class="num">{i + 1}</span>
             <div class="text"><span>{modelName(f)}</span><small class="mono">{f}</small></div>
             <button type="button" class="icon-btn" aria-label="Move {f} up" disabled={i === 0} onclick={() => prefs.moveFallback(i, -1)}>
               <Icon name="up" stroke={2} />
             </button>
-            <button type="button" class="icon-btn" aria-label="Move {f} down" disabled={i === s.fallbacks.length - 1} onclick={() => prefs.moveFallback(i, 1)}>
+            <button type="button" class="icon-btn" aria-label="Move {f} down" disabled={i === target.fallbacks.length - 1} onclick={() => prefs.moveFallback(i, 1)}>
               <Icon name="down" stroke={2} />
             </button>
             <button type="button" class="icon-btn" aria-label="Remove {f}" onclick={() => prefs.removeFallback(i)}>
@@ -96,14 +176,14 @@
             </button>
           </div>
         {/each}
-        {#if s.fallbacks.length < 3}
+        {#if target.fallbacks.length < 3}
           <div class="row">
             <label for="add-fallback" class="sr-only">Add fallback model</label>
             <input
               id="add-fallback"
               class="field wide"
-              list="models"
-              placeholder="Add a fallback, e.g. openai/gpt-5.1"
+              list={active ? "connection-models" : "models"}
+              placeholder={active ? "Add a fallback model ID" : "Add a fallback, e.g. openai/gpt-5.1"}
               bind:value={newFallback}
               onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); addFallback(); } }}
             />
@@ -159,7 +239,7 @@
 
     <section id="local-tools-section">
       <h2>Local tools</h2>
-      <p class="desc">Allow the model to list folders and read text files in the folders below. File contents it reads are sent to your chat model through OpenRouter.</p>
+      <p class="desc">Allow the model to list folders and read text files in the folders below. File contents it reads are sent to your chat model through {active?.name ?? "OpenRouter"}.</p>
       <div class="list">
         <div class="row">
           <div class="text"><span>Enable local tools</span><small>Read-only file access in your tool folders</small></div>

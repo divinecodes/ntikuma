@@ -35,7 +35,7 @@ registerHooks({
         return next(url, context);
     },
 });
-const { renderMarkdown, copyCode, externalLinks } = await import(format);
+const { renderMarkdown, copyCode, externalLinks, answerNote } = await import(format);
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 const fence = (code, language = "") => `\`\`\`${language}\n${code}\n\`\`\``;
 
@@ -272,4 +272,12 @@ test("copy controls and external browser links work together", async (t) => {
     node.querySelector("a").click();
     assert.deepEqual(h.copied, ["hello"]);
     assert.deepEqual(h.urls, ["https://example.com/docs"]);
+});
+
+test("answer notes name a fallback model and the direct provider that answered", () => {
+    assert.equal(answerNote({ model: "openai/gpt-5.1", fallback: true }), "Answered by GPT-5.1 · fallback");
+    assert.equal(answerNote({ model: "anthropic/claude-sonnet-5.5" }), "");
+    assert.equal(answerNote({ model: "llama3.3", provider: "Ollama" }), "Answered by Llama3.3 on Ollama");
+    assert.equal(answerNote({ provider: "Ollama" }), "Answered by Ollama");
+    assert.equal(answerNote({ model: "qwen3", fallback: true, provider: "Ollama" }), "Answered by Qwen3 on Ollama · fallback");
 });

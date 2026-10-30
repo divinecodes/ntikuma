@@ -30,7 +30,7 @@ func shotHistory(t *testing.T, sizes ...int) []store.Message {
 
 func TestReplayKeepsOnlyTheNewestScreenshots(t *testing.T) {
 	current := []Attachment{{Kind: "screenshot", Label: "Screenshot", Content: "data:image/png;base64,current"}}
-	messages := buildMessages("", shotHistory(t, 10, 10, 10, 10, 10, 10), "question now", current, 20000, time.Now())
+	messages := buildMessages("", shotHistory(t, 10, 10, 10, 10, 10, 10), "question now", current, 20000, time.Now(), "")
 	images := 0
 	for _, m := range messages {
 		images += len(m.Images)
@@ -55,13 +55,13 @@ func TestReplayKeepsOnlyTheNewestScreenshots(t *testing.T) {
 
 func TestReplayScreenshotsStayWithinAByteBudget(t *testing.T) {
 	big := maxReplayImageBytes/2 + 1
-	messages := buildMessages("", shotHistory(t, big, big), "question now", nil, 20000, time.Now())
+	messages := buildMessages("", shotHistory(t, big, big), "question now", nil, 20000, time.Now(), "")
 	if len(messages[1].Images) != 0 || len(messages[3].Images) != 1 {
 		t.Fatalf("byte budget: older %d images, newer %d", len(messages[1].Images), len(messages[3].Images))
 	}
 	// A screenshot on the current question is always sent, even when large.
 	current := []Attachment{{Kind: "screenshot", Content: "data:image/png;base64," + strings.Repeat("B", maxReplayImageBytes)}}
-	messages = buildMessages("", shotHistory(t, 10), "question now", current, 20000, time.Now())
+	messages = buildMessages("", shotHistory(t, 10), "question now", current, 20000, time.Now(), "")
 	if len(messages[len(messages)-1].Images) != 1 || len(messages[1].Images) != 0 {
 		t.Fatalf("current screenshot dropped or budget ignored: %+v", messages[1])
 	}
@@ -74,7 +74,7 @@ func TestLongHistoryDropsTheOldestTurnsFirst(t *testing.T) {
 			store.Message{Role: "user", Content: fmt.Sprintf("q%d %s", i, strings.Repeat("x", 30_000))},
 			store.Message{Role: "assistant", Content: fmt.Sprintf("a%d %s", i, strings.Repeat("y", 30_000))})
 	}
-	messages := trimHistory(buildMessages("", history, "question now", nil, 20000, time.Now()), maxHistoryChars)
+	messages := trimHistory(buildMessages("", history, "question now", nil, 20000, time.Now(), ""), maxHistoryChars)
 	total := 0
 	for _, m := range messages[1:] {
 		total += len(m.Content)
@@ -88,13 +88,13 @@ func TestLongHistoryDropsTheOldestTurnsFirst(t *testing.T) {
 	if strings.HasPrefix(messages[1].Content, "q0 ") || !strings.Contains(messages[0].Content, "Older messages in this chat were left out") {
 		t.Fatal("oldest turns kept or the model wasn't told")
 	}
-	short := trimHistory(buildMessages("", history[:2], "question now", nil, 20000, time.Now()), maxHistoryChars)
+	short := trimHistory(buildMessages("", history[:2], "question now", nil, 20000, time.Now(), ""), maxHistoryChars)
 	if len(short) != 4 || strings.Contains(short[0].Content, "left out") {
 		t.Fatalf("short history trimmed: %d messages", len(short))
 	}
 	// The current question is never dropped, even when it alone is over budget.
 	huge := strings.Repeat("z", maxHistoryChars+1)
-	alone := trimHistory(buildMessages("", history, huge, nil, 0, time.Now()), maxHistoryChars)
+	alone := trimHistory(buildMessages("", history, huge, nil, 0, time.Now(), ""), maxHistoryChars)
 	if len(alone) != 2 || alone[1].Content != huge {
 		t.Fatalf("current question dropped: %d messages", len(alone))
 	}
@@ -106,7 +106,7 @@ func TestEmptyAnswersAreReplayedAsAPlaceholder(t *testing.T) {
 		{Role: "user", Content: "second"}, {Role: "assistant", Content: " \n"},
 		{Role: "user", Content: "third"}, {Role: "assistant", Content: "A real answer"},
 	}
-	messages := buildMessages("", history, "fourth", nil, 20000, time.Now())
+	messages := buildMessages("", history, "fourth", nil, 20000, time.Now(), "")
 	roles := ""
 	for _, m := range messages[1:] {
 		roles += m.Role[:1]
@@ -186,7 +186,7 @@ func TestLongChatsFitTheModelsContextWindow(t *testing.T) {
 		return openrouter.Result{Text: "ok"}, nil
 	}}
 	svc, rec, _ := newChat(t, &fakeLLM{}, "key")
-	svc.newLLM = func(string) LLM { return llm }
+	svc.newLLM = func(endpoint) LLM { return llm }
 	first, err := svc.Send(SendRequest{Text: "short question", Model: "vendor/small"})
 	if err != nil {
 		t.Fatal(err)

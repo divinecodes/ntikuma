@@ -7,7 +7,8 @@ import {
     popupApi,
     prefsApi
 } from "./api";
-import type {ApprovalEvent, Attachment, Chat, DeltaEvent, DoneEvent, ErrorEvent, SelectionCapture, SelectionSupport, Settings, ToolActivity, ToolEvent, UIMessage,View} from "./types";
+import type {ApprovalEvent, Attachment, Chat, DeltaEvent, DoneEvent, ErrorEvent, ProviderStatus, SelectionCapture, SelectionSupport, Settings, ToolActivity, ToolEvent, UIMessage,View} from "./types";
+import { activeModels } from "./providers";
 
 // How long a chat stays "current" after popup hides
 const RESUME_WINDOW_MS = 10 * 60 * 1000;
@@ -20,7 +21,10 @@ class AppState {
     voiceSession = $state(0);
 
     settings = $state<Settings | null> (null);
+    // hasKey: the active provider has what sending needs (a key, unless it runs without one).
     hasKey = $state(true);
+    providerName = $state("OpenRouter");
+    webAvailable = $state(true);
 
     //Composedr
     input = $state("");
@@ -66,7 +70,7 @@ class AppState {
     }
 
     toggleWeb() {
-        this.web = !this.web;
+        if (this.webAvailable) this.web = !this.web;
     }
 
     recent = $state<Chat[]>([]);
@@ -77,6 +81,7 @@ class AppState {
     private chatVersion = 0;
     // Chat loads must not overwrite a newer request or user navigation.
     private navigationVersion = 0;
+    private providerVersion = 0;
     private screenshotVersion = 0;
     private selectionVersion = 0;
     private selectionOnFocus = false;
@@ -123,10 +128,27 @@ class AppState {
         this.error = "";
         try{
             this.applySettings(await prefsApi.get());
-            this.hasKey = await prefsApi.hasKey();
         } catch(e){
             this.error = errorText(e);
         }
+        await this.refreshProvider();
+    }
+
+    // Called on start and whenever preferences or a key are saved.
+    async refreshProvider() {
+        const version = ++this.providerVersion;
+        try {
+            const status = await prefsApi.providerStatus();
+            if (version === this.providerVersion) this.applyProvider(status);
+        } catch (e) {
+            if (version === this.providerVersion) this.error = errorText(e);
+        }
+    }
+
+    private applyProvider(status: ProviderStatus) {
+        this.hasKey = !status.needsKey || status.hasKey;
+        this.providerName = status.name;
+        this.webAvailable = status.web;
     }
 
     async refreshRecent() {
@@ -137,6 +159,8 @@ class AppState {
 
     applySettings(settings: Settings) {
         this.settings = settings;
+        // An override the picker no longer offers belongs to another provider.
+        if (this.modelOverride && !activeModels(settings).includes(this.modelOverride)) this.modelOverride = "";
         if (!settings.localTools || !settings.allowShellCommands) this.clearApprovals();
         this.autoAttach = settings.attachClipboard;
         if (!settings.attachSelection) {
@@ -318,6 +342,7 @@ class AppState {
                     content: m.content,
                     model: m.model,
                     fallback: m.fallback,
+                    provider: m.provider,
                     attachments: m.attachments,
                     citations: m.citations,
                     searches: m.searches,
@@ -468,13 +493,13 @@ class AppState {
         if(!text || this.streaming) return;
         this.error = "";
         if (!this.hasKey){
-            this.error = "Add your OpenRouter key in Preferences first";
+            this.error = `Add your ${this.providerName} key in Preferences first`;
             this.goTo("settings");
             return;
         }
 
         const attachments = composer ? $state.snapshot(this.attachments) as Attachment[] : [];
-        const web = this.web;
+        const web = this.web && this.webAvailable;
         this.answerWeb = web;
         const version = this.chatVersion;
         this.navigationVersion++;
@@ -562,6 +587,7 @@ class AppState {
             { ...a, status: "stopped" in d && d.stopped ? "stopped" : "error" } : a);
         m.model = d.model;
         m.fallback = d.fallback;
+        m.provider = d.provider;
         if ("error" in d) {
             m.error = d.error;
         } else {

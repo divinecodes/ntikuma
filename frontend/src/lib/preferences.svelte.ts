@@ -1,4 +1,5 @@
-import type { ModelInfo, Settings, VoiceSettings, VoiceReadiness } from "./types";
+import type { Connection, ModelInfo, Settings, VoiceSettings, VoiceReadiness } from "./types";
+import { activeConnection } from "./providers";
 
 interface PreferenceActions {
     get(): Promise<Settings>;
@@ -14,7 +15,19 @@ interface PreferenceActions {
     checkVoice?(settings: VoiceSettings): Promise<VoiceReadiness>;
     pickVoiceFolder?(engine: string, current: string): Promise<string>;
     pickToolFolder?(current: string): Promise<string>;
+    presets?(): Promise<Connection[]>;
+    addConnection?(connection: Connection): Promise<Settings>;
+    removeConnection?(id: string): Promise<Settings>;
+    hasConnectionKey?(id: string): Promise<boolean>;
+    setConnectionKey?(id: string, key: string): Promise<void>;
+    connectionModels?(id: string): Promise<ModelInfo[]>;
 }
+
+const connections = (list: Connection[] | null | undefined) => (list ?? []).map((c) => ({ ...c, fallbacks: [...(c.fallbacks ?? [])] }));
+// The backend's list after an add or remove, keeping the local drafts of
+// connections that are still there: they may hold edits made while it ran.
+const mergeConnections = (local: Connection[], next: Connection[] | null | undefined) =>
+    connections(next).map((n) => local.find((c) => c.id === n.id) ?? n);
 
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
 
@@ -40,6 +53,14 @@ export class Preferences {
     voicePicking = $state(false);
     toolPicking = $state(false);
     toolError = $state("");
+    presets = $state<Connection[]>([]);
+    connectionBusy = $state(false);
+    connectionError = $state("");
+    connectionKeyInput = $state("");
+    connectionHasKey = $state(false);
+    connectionKeySaving = $state(false);
+    connectionModels = $state<ModelInfo[]>([]);
+    connectionModelsError = $state("");
 
     private version = 0;
     private savedVersion = 0;
@@ -49,6 +70,8 @@ export class Preferences {
     private voiceVersion = 0;
     private toolVersion = 0;
     private toolPicker = 0;
+    private connectionKeyVersion = 0;
+    private connectionModelsVersion = 0;
     private saveTimer: ReturnType<typeof setTimeout> | undefined;
     private clearTimer: ReturnType<typeof setTimeout> | undefined;
     private activeSave: Promise<void> | null = null;
@@ -71,6 +94,8 @@ export class Preferences {
             const [settings, hasKey] = await Promise.all([this.actions.get(), this.actions.hasKey()]);
             if (this.disposed || version !== this.loadVersion) return;
             this.settings = { ...settings, fallbacks: settings.fallbacks ?? [],
+                provider: settings.provider ?? "",
+                connections: connections(settings.connections),
                 localTools: settings.localTools ?? false,
                 toolRoots: [...(settings.toolRoots ?? [])],
                 allowHiddenFiles: settings.allowHiddenFiles ?? false,
@@ -87,6 +112,8 @@ export class Preferences {
             this.hasKey = hasKey;
             this.actions.saved($state.snapshot(this.settings));
             this.actions.keyChanged(hasKey);
+            void this.refreshConnectionKey();
+            void this.loadPresets();
         } catch (e) {
             if (!this.disposed && version === this.loadVersion) this.loadError = message(e);
         } finally {
@@ -108,6 +135,148 @@ export class Preferences {
         }
     }
 
+    // The connection questions go to, or undefined for OpenRouter.
+    get active() {
+        return activeConnection(this.settings);
+    }
+
+    // Where the Models section edits: the active connection, or OpenRouter's fields.
+    get modelTarget(): { defaultModel: string; fallbacks: string[] } | null {
+        return this.active ?? this.settings;
+    }
+
+    async loadPresets() {
+        if (!this.actions.presets) return;
+        try {
+            const presets = await this.actions.presets();
+            if (!this.disposed) this.presets = presets;
+        } catch (e) {
+            if (!this.disposed) this.connectionError = message(e);
+        }
+    }
+
+    setProvider(id: string) {
+        if (!this.settings) return;
+        this.settings.provider = id;
+        this.connectionKeyInput = "";
+        this.connectionError = "";
+        void this.refreshConnectionKey();
+        this.changed();
+    }
+
+    // An edit to the active connection's address: its saved key and model
+    // list may no longer apply.
+    connectionChanged(delay = 300) {
+        this.connectionKeyVersion++;
+        this.connectionHasKey = false;
+        this.connectionModelsVersion++;
+        this.connectionModels = [];
+        this.connectionModelsError = "";
+        this.changed(delay);
+    }
+
+    // Suggestions from the active provider's own list. A failure only
+    // explains why there are none; model IDs can still be typed.
+    async refreshConnectionModels() {
+        const id = this.active?.id;
+        const version = ++this.connectionModelsVersion;
+        this.connectionModelsError = "";
+        if (!id || !this.actions.connectionModels) { this.connectionModels = []; return; }
+        try {
+            const models = await this.actions.connectionModels(id);
+            if (!this.disposed && version === this.connectionModelsVersion) this.connectionModels = models;
+        } catch (e) {
+            if (!this.disposed && version === this.connectionModelsVersion) {
+                this.connectionModels = [];
+                this.connectionModelsError = message(e);
+            }
+        }
+    }
+
+    async refreshConnectionKey() {
+        void this.refreshConnectionModels();
+        const id = this.active?.id;
+        const version = ++this.connectionKeyVersion;
+        if (!id || !this.actions.hasConnectionKey) { this.connectionHasKey = false; return; }
+        try {
+            const has = await this.actions.hasConnectionKey(id);
+            if (!this.disposed && version === this.connectionKeyVersion) this.connectionHasKey = has;
+        } catch {
+            if (!this.disposed && version === this.connectionKeyVersion) this.connectionHasKey = false;
+        }
+    }
+
+    // Connections are added and removed by the backend, which owns their IDs.
+    // Pending edits are saved first; a save sent meanwhile would carry the old list.
+    async addConnection(preset: Connection) {
+        if (!this.settings || !this.actions.addConnection || this.connectionBusy) return;
+        await this.flush();
+        const settings = this.settings;
+        if (this.error || !settings) { this.connectionError = "Fix the error above before adding a provider."; return; }
+        this.connectionBusy = true;
+        this.connectionError = "";
+        try {
+            const next = await this.actions.addConnection({ ...$state.snapshot(preset) as Connection, id: "" });
+            if (this.disposed || this.settings !== settings) return;
+            const before = new Set(settings.connections.map((c) => c.id));
+            settings.connections = mergeConnections(settings.connections, next.connections);
+            const added = settings.connections.find((c) => !before.has(c.id));
+            this.status = `${preset.name} added`;
+            if (added) this.setProvider(added.id);
+        } catch (e) {
+            if (!this.disposed) this.connectionError = message(e);
+        } finally {
+            this.connectionBusy = false;
+            if (this.version > this.savedVersion) void this.flush();
+        }
+    }
+
+    async removeConnection(id: string) {
+        if (!this.settings || !this.actions.removeConnection || this.connectionBusy || this.active?.id === id) return;
+        await this.flush();
+        const settings = this.settings;
+        if (this.error || !settings) { this.connectionError = "Fix the error above before removing a provider."; return; }
+        this.connectionBusy = true;
+        this.connectionError = "";
+        try {
+            const next = await this.actions.removeConnection(id);
+            if (this.disposed || this.settings !== settings) return;
+            settings.connections = mergeConnections(settings.connections, next.connections);
+            this.status = "Provider removed";
+        } catch (e) {
+            if (!this.disposed) this.connectionError = message(e);
+        } finally {
+            this.connectionBusy = false;
+            if (this.version > this.savedVersion) void this.flush();
+        }
+    }
+
+    // The backend binds a key to the connection's saved address, so unsaved
+    // address edits are saved first and a failed save holds the key back.
+    async saveConnectionKey() {
+        const connection = this.active;
+        const key = this.connectionKeyInput.trim();
+        if (!connection || !key || this.connectionKeySaving || !this.actions.setConnectionKey) return;
+        this.connectionKeySaving = true;
+        this.connectionError = "";
+        try {
+            await this.flush();
+            if (this.error || this.savedVersion < this.version || this.active !== connection) {
+                this.connectionError = "Save this provider's settings before its key.";
+                return;
+            }
+            await this.actions.setConnectionKey(connection.id, key);
+            this.connectionKeyInput = "";
+            await this.refreshConnectionKey();
+            this.actions.keyChanged(this.connectionHasKey);
+            this.status = "Key saved";
+        } catch {
+            this.connectionError = "Couldn't save the API key. Check that your keyring is unlocked and try again.";
+        } finally {
+            this.connectionKeySaving = false;
+        }
+    }
+
     changed(delay = 300) {
         if (!this.settings) return;
         this.version++;
@@ -119,8 +288,15 @@ export class Preferences {
 
     private validate() {
         const s = this.settings;
-        if (!s || !s.defaultModel.trim()) return "Pick a default model.";
-        if (s.fallbacks.length > 3) return "Keep it to three fallbacks at most.";
+        const target = this.modelTarget;
+        if (!s || !target || !target.defaultModel.trim()) return "Pick a default model.";
+        if (target.fallbacks.length > 3) return "Keep it to three fallbacks at most.";
+        const connection = this.active;
+        if (connection) {
+            if (!connection.name.trim()) return "Give the provider a name.";
+            if (!connection.baseUrl.trim()) return "Enter the provider's address.";
+            if (!Number.isInteger(connection.contextTokens) || connection.contextTokens < 0) return "Enter the context window as a whole number of tokens, or 0 if unknown.";
+        }
         if (!Number.isInteger(s.maxContextChars) || s.maxContextChars < 0) return "Enter a whole text context limit of zero or more.";
         if (!Number.isInteger(s.keepChatsDays) || s.keepChatsDays < 0) return "Enter a valid retention period.";
         for (const profile of [s.voice.qwen, s.voice.parakeet, s.voice.cohere]) {
@@ -244,12 +420,13 @@ export class Preferences {
     }
 
     private async drain() {
-        while (this.settings && this.savedVersion < this.version) {
+        while (this.settings && this.savedVersion < this.version && !this.connectionBusy) {
             this.error = this.validate();
             if (this.error) return;
             const version = this.version;
             const settings = $state.snapshot(this.settings);
             settings.defaultModel = settings.defaultModel.trim();
+            for (const connection of settings.connections) connection.defaultModel = connection.defaultModel.trim();
             this.saving = true;
             this.status = "Saving...";
             try {
@@ -258,6 +435,7 @@ export class Preferences {
                 this.savedVersion = version;
                 this.error = "";
                 this.status = this.savedVersion === this.version ? "Saved" : "Unsaved changes";
+                void this.refreshConnectionKey();
             } catch (e) {
                 this.error = message(e);
                 this.status = "Unsaved changes";
@@ -270,16 +448,17 @@ export class Preferences {
 
     addFallback(value: string) {
         const model = value.trim();
-        if (!this.settings || !model) return false;
-        if (this.settings.fallbacks.length >= 3) { this.error = "Keep it to three fallbacks at most."; return false; }
-        if (this.settings.fallbacks.includes(model)) { this.error = "That fallback is already in the list."; return false; }
-        this.settings.fallbacks.push(model);
+        const target = this.modelTarget;
+        if (!target || !model) return false;
+        if (target.fallbacks.length >= 3) { this.error = "Keep it to three fallbacks at most."; return false; }
+        if (target.fallbacks.includes(model)) { this.error = "That fallback is already in the list."; return false; }
+        target.fallbacks.push(model);
         this.changed();
         return true;
     }
 
     moveFallback(index: number, direction: -1 | 1) {
-        const list = this.settings?.fallbacks;
+        const list = this.modelTarget?.fallbacks;
         const target = index + direction;
         if (!list || index < 0 || index >= list.length || target < 0 || target >= list.length) return;
         [list[index], list[target]] = [list[target], list[index]];
@@ -287,8 +466,9 @@ export class Preferences {
     }
 
     removeFallback(index: number) {
-        if (!this.settings || index < 0 || index >= this.settings.fallbacks.length) return;
-        this.settings.fallbacks.splice(index, 1);
+        const target = this.modelTarget;
+        if (!target || index < 0 || index >= target.fallbacks.length) return;
+        target.fallbacks.splice(index, 1);
         this.changed();
     }
 
@@ -340,8 +520,10 @@ export class Preferences {
         this.voiceVersion++;
         this.toolVersion++;
         this.toolPicker++;
+        this.connectionKeyVersion++;
         clearTimeout(this.clearTimer);
         this.keyInput = "";
+        this.connectionKeyInput = "";
         void this.flush();
     }
 }

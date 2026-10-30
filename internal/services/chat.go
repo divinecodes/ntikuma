@@ -23,7 +23,7 @@ type ChatService struct {
 	cfg             *config.Manager
 	keys            KeyStore
 	events          Emitter
-	newLLM          func(apiKey string) LLM // newLLM builds a client for an API key.
+	newLLM          func(endpoint) LLM // newLLM builds the client for one answer.
 	mu              sync.Mutex
 	running         map[string]*runningAnswer
 	approvals       map[approvalKey]*pendingApproval
@@ -35,6 +35,7 @@ type ChatService struct {
 type runningAnswer struct {
 	messageID string
 	cancel    context.CancelFunc
+	provider  string // where this answer's questions and tool results go
 }
 
 // NewChatService wires the chat service
@@ -44,7 +45,7 @@ func NewChatService(st *store.Store, cfg *config.Manager, keys KeyStore, events 
 		cfg:             cfg,
 		keys:            keys,
 		events:          events,
-		newLLM:          func(k string) LLM { return openrouter.New(k) },
+		newLLM:          newClient,
 		running:         map[string]*runningAnswer{},
 		approvals:       map[approvalKey]*pendingApproval{},
 		approvalTimeout: 2 * time.Minute,
@@ -65,15 +66,17 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 			}
 		}
 	}
-	key, err := s.keys.APIKey()
+	// One snapshot decides where this answer goes and with which key.
+	settings := s.cfg.Get()
+	ep, err := s.resolveEndpoint(settings)
 	if err != nil {
-		return SendResult{}, fmt.Errorf("couldn't read the keyring: %w", err)
+		return SendResult{}, err
 	}
-	if key == "" {
-		return SendResult{}, errors.New("add your OpenRouter key in Preferences (Ctrl+,)")
+	models, err := settings.ModelChain(req.Model)
+	if err != nil {
+		return SendResult{}, err
 	}
 	ctx := context.Background()
-	settings := s.cfg.Get()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -110,13 +113,15 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 		return SendResult{}, err
 	}
 
-	models := settings.Models()
-	if req.Model != "" {
-		models = (config.Settings{DefaultModel: req.Model, Fallbacks: settings.Fallbacks}).Models()
+	// DeepSeek wants its earlier reasoning back once tools are offered.
+	reasoningFor := ""
+	if ep.connection != nil && settings.LocalTools {
+		reasoningFor = ep.connection.ID
 	}
-	msgs := buildMessages(settings.SystemPrompt, history, text, req.Attachments, settings.MaxContextChars, time.Now())
+	msgs := buildMessages(settings.SystemPrompt, history, text, req.Attachments, settings.MaxContextChars, time.Now(), reasoningFor)
 	llmRequest := openrouter.Request{Models: models, Messages: msgs, SessionID: chatID}
-	if req.Web {
+	// Web search and fetch are OpenRouter server tools.
+	if req.Web && ep.connection == nil {
 		llmRequest.Tools = openrouter.WebTools(settings.WebSearch.MaxResults, settings.WebSearch.MaxFetches)
 		llmRequest.MaxToolCalls = settings.WebSearch.MaxToolCalls
 		// The live beta probe returned its answer in a buffered burst. See client.go.
@@ -136,7 +141,7 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 		} else {
 			llmRequest.Messages[0].Content += " Hidden files and key or credential files are refused."
 		}
-		if req.Web {
+		if req.Web && ep.connection == nil {
 			llmRequest.Messages[0].Content += "\nWeb page fetching stops for the rest of an answer once a local tool has run. Web search remains available."
 		}
 		if settings.AllowShellCommands {
@@ -146,13 +151,13 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 
 	answerID := store.NewID()
 	streamCtx, cancel := context.WithCancel(context.Background())
-	s.running[chatID] = &runningAnswer{messageID: answerID, cancel: cancel}
+	s.running[chatID] = &runningAnswer{messageID: answerID, cancel: cancel, provider: ep.name}
 	s.workers.Add(1)
 
 	go func() {
 		defer s.workers.Done()
 		defer cancel()
-		s.stream(streamCtx, key, chatID, answerID, llmRequest, settings.AllowHiddenFiles)
+		s.stream(streamCtx, ep, chatID, answerID, llmRequest, settings.AllowHiddenFiles)
 	}()
 
 	return SendResult{ChatID: chatID, Title: title, MessageID: answerID}, nil
@@ -192,7 +197,7 @@ func (s *ChatService) Busy(chatID string) bool {
 	return s.running[chatID] != nil
 }
 
-func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, req openrouter.Request, hidden bool) {
+func (s *ChatService) stream(ctx context.Context, ep endpoint, chatID, answerID string, req openrouter.Request, hidden bool) {
 	finish := sync.OnceFunc(func() {
 		s.mu.Lock()
 		delete(s.running, chatID)
@@ -232,28 +237,56 @@ func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, 
 		}
 	}()
 
-	llm := s.newLLM(key)
+	llm := s.newLLM(ep)
+	if ep.connection != nil && len(req.Models) > 1 {
+		llm = fallbackLLM{llm}
+	}
+	var res turnResult
+	var err error
+	var limit contextLimit
 	// Sized here rather than in Send, so Send never waits for the catalog.
-	if conversationChars(req.Messages) > smallHistoryChars {
+	switch {
+	case ep.connection != nil && ep.connection.ContextTokens > 0:
+		// A known window is applied to every chat: small ones fill long
+		// before the threshold below.
+		limit = contextLimit{name: ep.name, tokens: ep.connection.ContextTokens}
+		req.Messages = trimHistory(req.Messages, knownBudget(ep.connection.ContextTokens, req))
+		if chars := requestChars(req); chars > limit.chars() {
+			err = fmt.Errorf("this question is too long for %s's %d-token context window (about %d characters with its attachments). Shorten it or remove attachments", ep.name, ep.connection.ContextTokens, chars)
+		}
+	case conversationChars(req.Messages) <= smallHistoryChars:
+	case ep.connection != nil:
+		// OpenRouter's catalog doesn't describe other providers' models.
+		req.Messages = trimHistory(req.Messages, maxHistoryChars)
+	default:
 		req.Messages = trimHistory(req.Messages, historyBudget(ctx, llm, req.Models))
 	}
-	res, err := s.runTurn(ctx, llm, req, hidden, chatID, answerID, func(d string) {
-		bufMu.Lock()
-		buf.WriteString(d)
-		bufMu.Unlock()
-	}, flush)
+	if err == nil {
+		res, err = s.runTurn(ctx, llm, req, limit, hidden, chatID, answerID, func(d string) {
+			bufMu.Lock()
+			buf.WriteString(d)
+			bufMu.Unlock()
+		}, flush)
+	}
 	ticker.Stop()
 	close(stopTicker)
 	<-flusherDone
 	flush()
 
 	stopped := ctx.Err() != nil || errors.Is(err, context.Canceled)
+	provider := ""
+	if ep.connection != nil {
+		provider = ep.name
+	}
 	resumable := cutOff(res.Text, stopped, err)
 	activity := activityViews(res.Activity)
 	if res.Text != "" || len(res.Citations) != 0 || res.Searches != nil || len(res.Activity) != 0 || stopped || err != nil {
-		meta := messageMeta{Citations: res.Citations, Searches: res.Searches, Activity: res.Activity, Stopped: stopped, CutOff: resumable}
+		meta := messageMeta{Citations: res.Citations, Searches: res.Searches, Activity: res.Activity, Stopped: stopped, CutOff: resumable, Provider: provider}
+		if ep.connection != nil && res.Reasoning != "" {
+			meta.Reasoning, meta.ReasoningFrom = truncateUTF8(res.Reasoning, maxStoredReasoning), ep.connection.ID
+		}
 		if err != nil && !stopped {
-			meta.Error = friendlyError(err)
+			meta.Error = ep.friendlyError(err)
 		}
 		encoded, _ := json.Marshal(meta)
 		if _, saveErr := s.store.AddMessage(context.Background(), store.Message{
@@ -267,13 +300,13 @@ func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, 
 	// A completion event allows the frontend to send a follow-up immediately.
 	finish()
 	if err != nil && !stopped {
-		s.events.Emit(EventChatError, ErrorEvent{ChatID: chatID, MessageID: answerID, Error: friendlyError(err), CutOff: resumable, Model: res.Model, Fallback: res.Fallback, Citations: res.Citations, Searches: res.Searches, Activity: activity})
+		s.events.Emit(EventChatError, ErrorEvent{ChatID: chatID, MessageID: answerID, Error: ep.friendlyError(err), CutOff: resumable, Model: res.Model, Fallback: res.Fallback, Citations: res.Citations, Searches: res.Searches, Activity: activity, Provider: provider})
 		return
 	}
 
 	s.events.Emit(EventChatDone, DoneEvent{
 		ChatID: chatID, MessageID: answerID, Model: res.Model, Fallback: res.Fallback, Stopped: stopped, CutOff: resumable,
-		Citations: res.Citations, Searches: res.Searches, Activity: activity,
+		Citations: res.Citations, Searches: res.Searches, Activity: activity, Provider: provider,
 	})
 }
 
@@ -298,7 +331,8 @@ const noAnswerText = "[No answer: this reply failed or was stopped before any te
 // buildMessages turns stored history plus the new message into the API format.
 // Text attachments are bounded by maxChars. Screenshots remain image parts for
 // the newest few; older ones become a note. trimHistory then bounds the text.
-func buildMessages(system string, history []store.Message, text string, atts []Attachment, maxChars int, now time.Time) []openrouter.Message {
+// Answers from the connection reasoningFor keep their saved reasoning.
+func buildMessages(system string, history []store.Message, text string, atts []Attachment, maxChars int, now time.Time, reasoningFor string) []openrouter.Message {
 	system = strings.TrimSpace(system)
 	if system != "" {
 		system += "\n\n"
@@ -310,6 +344,11 @@ func buildMessages(system string, history []store.Message, text string, atts []A
 		msg := openrouter.Message{Role: m.Role, Content: m.Content}
 		if m.Role == "assistant" && strings.TrimSpace(m.Content) == "" {
 			msg.Content = noAnswerText
+		}
+		if m.Role == "assistant" && reasoningFor != "" {
+			if meta := decodeMeta(m.Meta); meta.ReasoningFrom == reasoningFor {
+				msg.Reasoning = meta.Reasoning
+			}
 		}
 		if m.Role == "user" && m.Attachments != "" {
 			var prev []Attachment
@@ -347,11 +386,11 @@ func trimHistory(msgs []openrouter.Message, budget int) []openrouter.Message {
 	total := conversationChars(msgs)
 	first := 0
 	for first < len(turns)-1 && total > budget {
-		total -= len(turns[first].Content)
+		total -= turnChars(turns[first])
 		first++
 		// Start on a question, so the model never sees a reply to nothing.
 		for first < len(turns)-1 && turns[first].Role != "user" {
-			total -= len(turns[first].Content)
+			total -= turnChars(turns[first])
 			first++
 		}
 	}
@@ -366,9 +405,25 @@ func trimHistory(msgs []openrouter.Message, budget int) []openrouter.Message {
 func conversationChars(msgs []openrouter.Message) int {
 	total := 0
 	for _, m := range msgs[1:] {
-		total += len(m.Content)
+		total += turnChars(m)
 	}
 	return total
+}
+
+// turnChars counts replayed reasoning and tool calls too: they take space in
+// the window. Anthropic sends a turn's blocks, thinking included, in place of
+// its text and calls; other providers send the text with or without them, so
+// the larger of the two is counted.
+func turnChars(m openrouter.Message) int {
+	n := len(m.Content) + len(m.Reasoning)
+	for _, call := range m.ToolCalls {
+		n += len(call.Function.Name) + len(call.Function.Arguments)
+	}
+	blocks := 0
+	for _, raw := range m.ReasoningDetails {
+		blocks += len(raw)
+	}
+	return max(n, blocks)
 }
 
 // contextSizer is an LLM that can look up its models' context windows.
@@ -395,6 +450,40 @@ func historyBudget(ctx context.Context, llm LLM, models []string) int {
 		return maxHistoryChars
 	}
 	return min(maxHistoryChars, tokens*charsPerToken/2)
+}
+
+// knownBudget is the history budget for a known window of tokens: half of it,
+// at most maxHistoryChars, less the system prompt and tool definitions, which
+// take a real share of a small window.
+func knownBudget(tokens int, req openrouter.Request) int {
+	budget := min(maxHistoryChars, tokens*charsPerToken/2) - len(req.Messages[0].Content) - toolChars(req.Tools)
+	return max(budget, 0)
+}
+
+// contextLimit is a direct provider's known context window; zero when unknown.
+type contextLimit struct {
+	name   string
+	tokens int
+}
+
+func (l contextLimit) chars() int { return l.tokens * charsPerToken }
+
+// toolRoom is how much of the window tool results may fill, leaving a quarter
+// for the answer.
+func (l contextLimit) toolRoom() int { return l.chars() * 3 / 4 }
+
+func (l contextLimit) full() error {
+	return fmt.Errorf("the tool results don't fit in %s's %d-token context window. Ask a narrower question, or raise the window in Preferences", l.name, l.tokens)
+}
+
+// requestChars is everything a request sends: system prompt, tools and turns.
+func requestChars(req openrouter.Request) int {
+	return len(req.Messages[0].Content) + toolChars(req.Tools) + conversationChars(req.Messages)
+}
+
+func toolChars(tools []openrouter.Tool) int {
+	raw, _ := json.Marshal(tools)
+	return len(raw)
 }
 
 func withAttachments(text string, atts []Attachment, maxChars int) openrouter.Message {
@@ -455,33 +544,6 @@ func cutOff(text string, stopped bool, err error) bool {
 	}
 	var finish *openrouter.FinishError
 	return stopped || errors.As(err, &finish) && finish.Reason == "length" || errors.Is(err, openrouter.ErrIncomplete)
-}
-
-func friendlyError(err error) string {
-	var apiErr *openrouter.APIError
-	if errors.As(err, &apiErr) {
-		switch apiErr.Status {
-		case 401:
-			return "OpenRouter rejected the key. Check it in Preferences"
-		case 402:
-			return "Out of OpenRouter credits"
-		case 429:
-			return "Every model in the list is rate-limited right now. Try again shortly"
-		}
-		return apiErr.Message
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return "OpenRouter took too long to respond"
-	}
-	// The partial text is saved alongside, so say why it stops where it does.
-	var finish *openrouter.FinishError
-	if errors.As(err, &finish) {
-		return sentence(finish.Error())
-	}
-	if errors.Is(err, openrouter.ErrIncomplete) {
-		return sentence(openrouter.ErrIncomplete.Error())
-	}
-	return err.Error()
 }
 
 func sentence(s string) string {

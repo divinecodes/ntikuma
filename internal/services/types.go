@@ -40,10 +40,14 @@ type secretMarker interface {
 	MarkedSecret() bool
 }
 
-// KeyStore holds the OpenRouter key. secrets.Keyring satisfies it.
+// KeyStore holds the OpenRouter key and direct connections' keys, each bound
+// to the origin it was saved for. secrets.Keyring satisfies it.
 type KeyStore interface {
 	APIKey() (string, error)
 	SetAPIKey(string) error
+	ConnectionKey(id, origin string) (string, error)
+	SetConnectionKey(id, origin, key string) error
+	DeleteConnectionKey(id string) error
 }
 
 type LLM interface {
@@ -91,6 +95,7 @@ type DoneEvent struct {
 	Citations []openrouter.Citation `json:"citations,omitempty"`
 	Searches  *int                  `json:"searches,omitempty"`
 	Activity  []ToolActivity        `json:"activity,omitempty"`
+	Provider  string                `json:"provider,omitempty"` // a direct provider's name; empty for OpenRouter
 }
 
 // ErrorEvent reports a failed answer. Partial text, if any, was already streamed.
@@ -104,6 +109,7 @@ type ErrorEvent struct {
 	Citations []openrouter.Citation `json:"citations,omitempty"`
 	Searches  *int                  `json:"searches,omitempty"`
 	Activity  []ToolActivity        `json:"activity,omitempty"`
+	Provider  string                `json:"provider,omitempty"`
 }
 
 // ToolActivity exposes summaries, never file contents or provider reasoning.
@@ -129,4 +135,15 @@ type ApprovalEvent struct {
 	ExpiresAt        time.Time `json:"expiresAt"`
 	State            string    `json:"state"`             // pending, closed
 	Outcome          string    `json:"outcome,omitempty"` // allowed, denied, expired, canceled, revoked
+	Provider         string    `json:"provider"`          // where the command's output goes
+}
+
+// ProviderStatus tells the frontend what sending needs from the active
+// provider. Keys themselves never go to the frontend.
+type ProviderStatus struct {
+	ID       string `json:"id"` // "openrouter" or a connection ID
+	Name     string `json:"name"`
+	NeedsKey bool   `json:"needsKey"`
+	HasKey   bool   `json:"hasKey"`
+	Web      bool   `json:"web"` // web search is available
 }
