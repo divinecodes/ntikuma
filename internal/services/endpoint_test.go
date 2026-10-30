@@ -30,7 +30,7 @@ func chatWithConfig(t *testing.T, document string, keys KeyStore) (*ChatService,
 	t.Cleanup(func() { st.Close() })
 	svc := NewChatService(st, cfg, keys, &recorder{done: make(chan any, 1)})
 	t.Cleanup(func() { _ = svc.ServiceShutdown() })
-	svc.newLLM = func(string) LLM {
+	svc.newLLM = func(endpoint) LLM {
 		t.Error("a client was built")
 		return streamFunc(func(context.Context, openrouter.Request, func(string)) (openrouter.Result, error) {
 			return openrouter.Result{}, errors.New("sent")
@@ -45,14 +45,14 @@ func TestSendNeverFallsBackToOpenRouterFromAnotherProvider(t *testing.T) {
 	keys := &memoryKeys{key: "fake-openrouter-key"}
 	for name, document := range map[string]string{
 		"unknown provider": `{"provider":"c-ffffffffffff"}`,
-		"direct provider":  `{"provider":"c-0123456789ab","connections":[` + ollamaConnection + `]}`,
+		"deleted provider": `{"provider":"c-ffffffffffff","connections":[` + ollamaConnection + `]}`,
 	} {
 		svc, st := chatWithConfig(t, document, keys)
 		_, err := svc.Send(SendRequest{Text: "private question"})
 		if err == nil {
 			t.Fatalf("%s: sent", name)
 		}
-		if name == "unknown provider" && !errors.Is(err, config.ErrUnknownProvider) {
+		if !errors.Is(err, config.ErrUnknownProvider) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if chats, _ := st.ListChats(context.Background(), 10); len(chats) != 0 {

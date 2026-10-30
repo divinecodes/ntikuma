@@ -10,7 +10,7 @@ import (
 )
 
 func validConnection() Connection {
-	return Connection{ID: "c-0123456789ab", Kind: KindOpenAICompatible, Name: "Ollama", BaseURL: "http://localhost:11434/v1", DefaultModel: "llama3.3", Fallbacks: []string{"qwen3"}}
+	return Connection{ID: "c-0123456789ab", Kind: KindOpenAICompatible, Name: "Ollama", BaseURL: "http://localhost:11434/v1", DefaultModel: "llama3.3", Fallbacks: []string{"qwen3"}, ContextTokens: 4096}
 }
 
 func TestConnectionsRoundTripAndPickTheActiveProvider(t *testing.T) {
@@ -212,6 +212,77 @@ func TestPresetsAreValidOnceTheyHaveAnID(t *testing.T) {
 		s.Connections = []Connection{preset}
 		if err := s.Validate(); err != nil {
 			t.Errorf("%s: %v", preset.Name, err)
+		}
+	}
+}
+
+func TestModelChainsComeFromTheActiveProvider(t *testing.T) {
+	s := Defaults()
+	s.DefaultModel, s.Fallbacks = "openrouter/default", []string{"openrouter/fallback"}
+	ollama := validConnection()
+	s.Connections = []Connection{ollama}
+	chain := func(override string) []string {
+		t.Helper()
+		got, err := s.ModelChain(override)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if got := chain(""); !reflect.DeepEqual(got, []string{"openrouter/default", "openrouter/fallback"}) {
+		t.Fatalf("OpenRouter: %v", got)
+	}
+	// OpenRouter keeps accepting any override, followed by its fallbacks.
+	if got := chain("vendor/other"); !reflect.DeepEqual(got, []string{"vendor/other", "openrouter/fallback"}) {
+		t.Fatalf("OpenRouter override: %v", got)
+	}
+	s.Provider = ollama.ID
+	if got := chain(""); !reflect.DeepEqual(got, []string{"llama3.3", "qwen3"}) || !reflect.DeepEqual(s.Models(), got) {
+		t.Fatalf("Ollama: %v %v", got, s.Models())
+	}
+	if got := chain("qwen3"); !reflect.DeepEqual(got, []string{"qwen3"}) {
+		t.Fatalf("Ollama override: %v", got)
+	}
+	if got := chain("llama3.3"); !reflect.DeepEqual(got, []string{"llama3.3", "qwen3"}) {
+		t.Fatalf("Ollama default as override: %v", got)
+	}
+	// A model from another provider is a stale picker, not a request.
+	if _, err := s.ModelChain("openrouter/default"); err == nil {
+		t.Fatal("sent another provider's model to Ollama")
+	}
+	s.Provider = "c-ffffffffffff"
+	if _, err := s.ModelChain(""); err == nil || s.Models() != nil {
+		t.Fatal("unknown provider has a chain")
+	}
+}
+
+func TestLocalConnectionsNeedAContextWindowToBeActive(t *testing.T) {
+	s := Defaults()
+	c := validConnection()
+	c.ContextTokens = 0
+	s.Connections = []Connection{c}
+	if err := s.Validate(); err != nil {
+		t.Fatalf("inactive: %v", err)
+	}
+	s.Provider = c.ID
+	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "context window") {
+		t.Fatalf("active without a window: %v", err)
+	}
+	s.Connections[0].ContextTokens = 4096
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	// Remote APIs publish large windows; leaving it unknown is fine.
+	s.Connections[0].BaseURL, s.Connections[0].ContextTokens = "https://api.openai.com/v1", 0
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range Presets() {
+		if IsLoopback(p.BaseURL) && p.ContextTokens == 0 {
+			t.Errorf("%s preset has no context window", p.Name)
+		}
+		if p.Kind == KindAnthropic {
+			t.Errorf("%s is offered before its adapter exists", p.Name)
 		}
 	}
 }

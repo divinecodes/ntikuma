@@ -186,7 +186,7 @@ func TestLongChatsFitTheModelsContextWindow(t *testing.T) {
 		return openrouter.Result{Text: "ok"}, nil
 	}}
 	svc, rec, _ := newChat(t, &fakeLLM{}, "key")
-	svc.newLLM = func(string) LLM { return llm }
+	svc.newLLM = func(endpoint) LLM { return llm }
 	first, err := svc.Send(SendRequest{Text: "short question", Model: "vendor/small"})
 	if err != nil {
 		t.Fatal(err)

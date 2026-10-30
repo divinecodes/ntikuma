@@ -180,6 +180,10 @@ type Client struct {
 	APIKey   string
 	AppTitle string //AppTitle is sent as X-Title so the app shows up in OpenRouter
 	HTTP     *http.Client
+	// Direct talks to an OpenAI-compatible API instead of OpenRouter: one
+	// model per request, only standard fields, no web server tools or
+	// catalog check, and the key is optional.
+	Direct bool
 }
 
 // New returns a client for apiKey
@@ -258,7 +262,7 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 	if len(req.Models) == 0 {
 		return Result{}, errors.New("openrouter: no model configured")
 	}
-	if c.APIKey == "" {
+	if c.APIKey == "" && !c.Direct {
 		return Result{}, errors.New("openrouter: Missing API key")
 	}
 	var text, reasoning strings.Builder
@@ -280,7 +284,10 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 	}()
 
 	models := req.Models
-	if slices.ContainsFunc(req.Messages, func(m Message) bool { return len(m.Images) > 0 }) {
+	if c.Direct {
+		// Fallbacks are tried by the caller, one request each.
+		models = models[:1]
+	} else if slices.ContainsFunc(req.Messages, func(m Message) bool { return len(m.Images) > 0 }) {
 		// Never silently drop an image to satisfy a text-only fallback. Check
 		// the current catalog because model capabilities and aliases change.
 		catalogCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -295,8 +302,17 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 		}
 	}
 	body := chatBody{Messages: req.Messages, Stream: !req.NonStreaming, SessionID: req.SessionID, Tools: req.Tools, MaxToolCalls: req.MaxToolCalls}
-	functionTools := slices.ContainsFunc(req.Tools, func(t Tool) bool { return t.Type == "function" })
-	if functionTools {
+	if c.Direct {
+		// Other APIs reject OpenRouter's fields and don't run its server tools.
+		body.SessionID, body.MaxToolCalls, body.Tools = "", 0, nil
+		for _, tool := range req.Tools {
+			if tool.Type == "function" {
+				body.Tools = append(body.Tools, tool)
+			}
+		}
+	}
+	functionTools := slices.ContainsFunc(body.Tools, func(t Tool) bool { return t.Type == "function" })
+	if functionTools && !c.Direct {
 		body.Provider = &providerOptions{RequireParameters: true}
 	}
 	if len(models) == 1 {
@@ -314,14 +330,16 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 	if err != nil {
 		return Result{}, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
+	if c.APIKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if req.NonStreaming {
 		httpReq.Header.Set("Accept", "application/json")
 	} else {
 		httpReq.Header.Set("Accept", "text/event-stream")
 	}
-	if c.AppTitle != "" {
+	if c.AppTitle != "" && !c.Direct {
 		httpReq.Header.Set("X-Title", c.AppTitle)
 	}
 

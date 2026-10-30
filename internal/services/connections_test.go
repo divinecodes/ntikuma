@@ -75,7 +75,7 @@ func newSettings(t *testing.T) (*SettingsService, *config.Manager, *memoryKeys) 
 
 func addOllama(t *testing.T, svc *SettingsService) config.Connection {
 	t.Helper()
-	s, err := svc.AddConnection(config.Connection{ID: "c-000000000000", Kind: config.KindOpenAICompatible, Name: "Ollama", BaseURL: "http://localhost:11434/v1", DefaultModel: "llama3.3"})
+	s, err := svc.AddConnection(config.Connection{ID: "c-000000000000", Kind: config.KindOpenAICompatible, Name: "Ollama", BaseURL: "http://localhost:11434/v1", DefaultModel: "llama3.3", ContextTokens: 4096})
 	if err != nil {
 		t.Fatal(err)
 	}

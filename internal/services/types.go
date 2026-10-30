@@ -134,3 +134,13 @@ type ApprovalEvent struct {
 	State            string    `json:"state"`             // pending, closed
 	Outcome          string    `json:"outcome,omitempty"` // allowed, denied, expired, canceled, revoked
 }
+
+// ProviderStatus tells the frontend what sending needs from the active
+// provider. Keys themselves never go to the frontend.
+type ProviderStatus struct {
+	ID       string `json:"id"` // "openrouter" or a connection ID
+	Name     string `json:"name"`
+	NeedsKey bool   `json:"needsKey"`
+	HasKey   bool   `json:"hasKey"`
+	Web      bool   `json:"web"` // web search is available
+}

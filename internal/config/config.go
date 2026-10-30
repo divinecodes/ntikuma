@@ -142,10 +142,39 @@ func Defaults() Settings {
 	}
 }
 
+// Models is the active provider's default model and fallbacks, without
+// repeats. It's empty when the provider is unknown.
 func (s Settings) Models() []string {
+	models, _ := s.ModelChain("")
+	return models
+}
+
+// ModelChain is the chain for one question: override (or the default model)
+// first, then the active provider's fallbacks. OpenRouter accepts any
+// override. A direct connection accepts only its own models, since anything
+// else comes from a picker that still shows another provider's.
+func (s Settings) ModelChain(override string) ([]string, error) {
+	conn, err := s.ActiveConnection()
+	if err != nil {
+		return nil, err
+	}
+	first, fallbacks := s.DefaultModel, s.Fallbacks
+	if conn != nil {
+		first, fallbacks = conn.DefaultModel, conn.Fallbacks
+		if override != "" && override != first && !slices.Contains(fallbacks, override) {
+			return nil, fmt.Errorf("%s isn't set up for %s. Pick one of its models", override, conn.Name)
+		}
+	}
+	if override != "" {
+		first = override
+	}
+	return dedupe(append([]string{first}, fallbacks...)), nil
+}
+
+func dedupe(models []string) []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, m := range append([]string{s.DefaultModel}, s.Fallbacks...) {
+	for _, m := range models {
 		if m == "" || seen[m] {
 			continue
 		}

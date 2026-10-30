@@ -41,10 +41,11 @@ type Connection struct {
 func Presets() []Connection {
 	return []Connection{
 		{Kind: KindOpenAICompatible, Name: "OpenAI", BaseURL: "https://api.openai.com/v1"},
-		{Kind: KindAnthropic, Name: "Anthropic", BaseURL: "https://api.anthropic.com"},
-		{Kind: KindOpenAICompatible, Name: "Ollama", BaseURL: "http://localhost:11434/v1"},
+		// Ollama's default window depends on VRAM; 4096 is its smallest.
+		{Kind: KindOpenAICompatible, Name: "Ollama", BaseURL: "http://localhost:11434/v1", ContextTokens: 4096},
 		{Kind: KindOpenAICompatible, Name: "Kimi", BaseURL: "https://api.moonshot.ai/v1"},
 		{Kind: KindOpenAICompatible, Name: "DeepSeek", BaseURL: "https://api.deepseek.com"},
+		{Kind: KindOpenAICompatible, Name: "Custom", BaseURL: "http://localhost:8080/v1", ContextTokens: 4096},
 	}
 }
 
@@ -179,6 +180,11 @@ func (s Settings) validateProvider() error {
 	}
 	if c != nil && strings.TrimSpace(c.DefaultModel) == "" {
 		return fmt.Errorf("pick a default model for %s", c.Name)
+	}
+	// Local servers often run small windows and drop the start of a prompt
+	// that doesn't fit, so the history budget needs the real size.
+	if c != nil && IsLoopback(c.BaseURL) && c.ContextTokens == 0 {
+		return fmt.Errorf("set the context window for %s", c.Name)
 	}
 	return nil
 }

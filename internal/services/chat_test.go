@@ -167,7 +167,7 @@ func newChat(t *testing.T, llm *fakeLLM, key string) (*ChatService, *recorder, *
 	rec := &recorder{done: make(chan any, 1)}
 	svc := NewChatService(st, cfg, fakeKeys{key}, rec)
 	t.Cleanup(func() { _ = svc.ServiceShutdown() })
-	svc.newLLM = func(string) LLM { return llm }
+	svc.newLLM = func(endpoint) LLM { return llm }
 	return svc, rec, st
 }
 
@@ -268,7 +268,7 @@ func TestStopMarksStopped(t *testing.T) {
 func TestStopCancelsStreamAndSavesPartial(t *testing.T) {
 	svc, rec, st := newChat(t, &fakeLLM{}, "key")
 	started := make(chan struct{})
-	svc.newLLM = func(string) LLM {
+	svc.newLLM = func(endpoint) LLM {
 		return streamFunc(func(ctx context.Context, _ openrouter.Request, onDelta func(string)) (openrouter.Result, error) {
 			onDelta("Partial answer")
 			close(started)
@@ -350,10 +350,10 @@ func TestTruncateUTF8(t *testing.T) {
 func utf8Valid(s string) bool { return strings.ToValidUTF8(s, "�") == s }
 
 func TestFriendlyError(t *testing.T) {
-	if got := friendlyError(&openrouter.APIError{Status: 401}); !strings.Contains(got, "key") {
+	if got := (endpoint{name: "OpenRouter"}).friendlyError(&openrouter.APIError{Status: 401}); !strings.Contains(got, "key") {
 		t.Fatal(got)
 	}
-	if got := friendlyError(errors.New("boom")); got != "boom" {
+	if got := (endpoint{name: "OpenRouter"}).friendlyError(errors.New("boom")); got != "boom" {
 		t.Fatal(got)
 	}
 }
@@ -435,7 +435,7 @@ func TestOnlyAnswersThatStoppedEarlyCanBeContinued(t *testing.T) {
 			return openrouter.Result{Text: text}, ctx.Err()
 		})
 		svc, rec, _ := newChat(t, &fakeLLM{}, "k")
-		svc.newLLM = func(string) LLM { return llm }
+		svc.newLLM = func(endpoint) LLM { return llm }
 		res, err := svc.Send(SendRequest{Text: "hi"})
 		if err != nil {
 			t.Fatal(err)

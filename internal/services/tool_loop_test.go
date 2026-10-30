@@ -33,7 +33,7 @@ func fileCall(id, name, path string) openrouter.ToolCall {
 
 func useScript(svc *ChatService, fn func(int, context.Context, openrouter.Request, func(string)) (openrouter.Result, error)) *[]openrouter.Request {
 	var requests []openrouter.Request
-	svc.newLLM = func(string) LLM {
+	svc.newLLM = func(endpoint) LLM {
 		return streamFunc(func(ctx context.Context, req openrouter.Request, delta func(string)) (openrouter.Result, error) {
 			req.Messages, req.Tools = slices.Clone(req.Messages), slices.Clone(req.Tools)
 			requests = append(requests, req)
@@ -389,7 +389,7 @@ func TestConcurrentSendStartsOnlyOneAnswerForAChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	release := make(chan struct{})
-	svc.newLLM = func(string) LLM {
+	svc.newLLM = func(endpoint) LLM {
 		return streamFunc(func(ctx context.Context, _ openrouter.Request, _ func(string)) (openrouter.Result, error) {
 			<-release
 			return openrouter.Result{Text: "Answer"}, nil

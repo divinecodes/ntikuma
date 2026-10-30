@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -23,7 +24,7 @@ type ChatService struct {
 	cfg             *config.Manager
 	keys            KeyStore
 	events          Emitter
-	newLLM          func(apiKey string) LLM // newLLM builds a client for an API key.
+	newLLM          func(endpoint) LLM // newLLM builds the client for one answer.
 	mu              sync.Mutex
 	running         map[string]*runningAnswer
 	approvals       map[approvalKey]*pendingApproval
@@ -44,7 +45,7 @@ func NewChatService(st *store.Store, cfg *config.Manager, keys KeyStore, events 
 		cfg:             cfg,
 		keys:            keys,
 		events:          events,
-		newLLM:          func(k string) LLM { return openrouter.New(k) },
+		newLLM:          newClient,
 		running:         map[string]*runningAnswer{},
 		approvals:       map[approvalKey]*pendingApproval{},
 		approvalTimeout: 2 * time.Minute,
@@ -71,11 +72,14 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 	if err != nil {
 		return SendResult{}, err
 	}
-	if ep.connection != nil {
+	if ep.connection != nil && ep.connection.Kind == config.KindAnthropic {
 		// Never send a question meant for another provider to OpenRouter.
-		return SendResult{}, fmt.Errorf("%s can't be used yet. Choose OpenRouter in Preferences", ep.name)
+		return SendResult{}, fmt.Errorf("%s can't be used yet. Choose another provider in Preferences", ep.name)
 	}
-	key := ep.key
+	models, err := settings.ModelChain(req.Model)
+	if err != nil {
+		return SendResult{}, err
+	}
 	ctx := context.Background()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -113,13 +117,10 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 		return SendResult{}, err
 	}
 
-	models := settings.Models()
-	if req.Model != "" {
-		models = (config.Settings{DefaultModel: req.Model, Fallbacks: settings.Fallbacks}).Models()
-	}
 	msgs := buildMessages(settings.SystemPrompt, history, text, req.Attachments, settings.MaxContextChars, time.Now())
 	llmRequest := openrouter.Request{Models: models, Messages: msgs, SessionID: chatID}
-	if req.Web {
+	// Web search and fetch are OpenRouter server tools.
+	if req.Web && ep.connection == nil {
 		llmRequest.Tools = openrouter.WebTools(settings.WebSearch.MaxResults, settings.WebSearch.MaxFetches)
 		llmRequest.MaxToolCalls = settings.WebSearch.MaxToolCalls
 		// The live beta probe returned its answer in a buffered burst. See client.go.
@@ -139,7 +140,7 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 		} else {
 			llmRequest.Messages[0].Content += " Hidden files and key or credential files are refused."
 		}
-		if req.Web {
+		if req.Web && ep.connection == nil {
 			llmRequest.Messages[0].Content += "\nWeb page fetching stops for the rest of an answer once a local tool has run. Web search remains available."
 		}
 		if settings.AllowShellCommands {
@@ -155,7 +156,7 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 	go func() {
 		defer s.workers.Done()
 		defer cancel()
-		s.stream(streamCtx, key, chatID, answerID, llmRequest, settings.AllowHiddenFiles)
+		s.stream(streamCtx, ep, chatID, answerID, llmRequest, settings.AllowHiddenFiles)
 	}()
 
 	return SendResult{ChatID: chatID, Title: title, MessageID: answerID}, nil
@@ -167,6 +168,14 @@ type endpoint struct {
 	name       string
 	connection *config.Connection // nil for OpenRouter
 	key        string
+}
+
+func newClient(ep endpoint) LLM {
+	client := openrouter.New(ep.key)
+	if ep.connection != nil {
+		client.BaseURL, client.Direct = ep.connection.BaseURL, true
+	}
+	return client
 }
 
 // resolveEndpoint finds the active provider in settings and its key. A direct
@@ -235,7 +244,7 @@ func (s *ChatService) Busy(chatID string) bool {
 	return s.running[chatID] != nil
 }
 
-func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, req openrouter.Request, hidden bool) {
+func (s *ChatService) stream(ctx context.Context, ep endpoint, chatID, answerID string, req openrouter.Request, hidden bool) {
 	finish := sync.OnceFunc(func() {
 		s.mu.Lock()
 		delete(s.running, chatID)
@@ -275,16 +284,32 @@ func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, 
 		}
 	}()
 
-	llm := s.newLLM(key)
+	llm := s.newLLM(ep)
+	var res turnResult
+	var err error
 	// Sized here rather than in Send, so Send never waits for the catalog.
-	if conversationChars(req.Messages) > smallHistoryChars {
+	switch {
+	case ep.connection != nil && ep.connection.ContextTokens > 0:
+		// A known window is applied to every chat: small ones fill long
+		// before the threshold below.
+		req.Messages = trimHistory(req.Messages, knownBudget(ep.connection.ContextTokens, req))
+		if chars := requestChars(req); chars > ep.connection.ContextTokens*charsPerToken {
+			err = fmt.Errorf("this question is too long for %s's %d-token context window (about %d characters with its attachments). Shorten it or remove attachments", ep.name, ep.connection.ContextTokens, chars)
+		}
+	case conversationChars(req.Messages) <= smallHistoryChars:
+	case ep.connection != nil:
+		// OpenRouter's catalog doesn't describe other providers' models.
+		req.Messages = trimHistory(req.Messages, maxHistoryChars)
+	default:
 		req.Messages = trimHistory(req.Messages, historyBudget(ctx, llm, req.Models))
 	}
-	res, err := s.runTurn(ctx, llm, req, hidden, chatID, answerID, func(d string) {
-		bufMu.Lock()
-		buf.WriteString(d)
-		bufMu.Unlock()
-	}, flush)
+	if err == nil {
+		res, err = s.runTurn(ctx, llm, req, hidden, chatID, answerID, func(d string) {
+			bufMu.Lock()
+			buf.WriteString(d)
+			bufMu.Unlock()
+		}, flush)
+	}
 	ticker.Stop()
 	close(stopTicker)
 	<-flusherDone
@@ -296,7 +321,7 @@ func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, 
 	if res.Text != "" || len(res.Citations) != 0 || res.Searches != nil || len(res.Activity) != 0 || stopped || err != nil {
 		meta := messageMeta{Citations: res.Citations, Searches: res.Searches, Activity: res.Activity, Stopped: stopped, CutOff: resumable}
 		if err != nil && !stopped {
-			meta.Error = friendlyError(err)
+			meta.Error = ep.friendlyError(err)
 		}
 		encoded, _ := json.Marshal(meta)
 		if _, saveErr := s.store.AddMessage(context.Background(), store.Message{
@@ -310,7 +335,7 @@ func (s *ChatService) stream(ctx context.Context, key, chatID, answerID string, 
 	// A completion event allows the frontend to send a follow-up immediately.
 	finish()
 	if err != nil && !stopped {
-		s.events.Emit(EventChatError, ErrorEvent{ChatID: chatID, MessageID: answerID, Error: friendlyError(err), CutOff: resumable, Model: res.Model, Fallback: res.Fallback, Citations: res.Citations, Searches: res.Searches, Activity: activity})
+		s.events.Emit(EventChatError, ErrorEvent{ChatID: chatID, MessageID: answerID, Error: ep.friendlyError(err), CutOff: resumable, Model: res.Model, Fallback: res.Fallback, Citations: res.Citations, Searches: res.Searches, Activity: activity})
 		return
 	}
 
@@ -440,6 +465,24 @@ func historyBudget(ctx context.Context, llm LLM, models []string) int {
 	return min(maxHistoryChars, tokens*charsPerToken/2)
 }
 
+// knownBudget is the history budget for a known window of tokens: half of it,
+// at most maxHistoryChars, less the system prompt and tool definitions, which
+// take a real share of a small window.
+func knownBudget(tokens int, req openrouter.Request) int {
+	budget := min(maxHistoryChars, tokens*charsPerToken/2) - len(req.Messages[0].Content) - toolChars(req.Tools)
+	return max(budget, 0)
+}
+
+// requestChars is everything a request sends: system prompt, tools and turns.
+func requestChars(req openrouter.Request) int {
+	return len(req.Messages[0].Content) + toolChars(req.Tools) + conversationChars(req.Messages)
+}
+
+func toolChars(tools []openrouter.Tool) int {
+	raw, _ := json.Marshal(tools)
+	return len(raw)
+}
+
 func withAttachments(text string, atts []Attachment, maxChars int) openrouter.Message {
 	msg := openrouter.Message{Role: "user", Content: text}
 	if len(atts) == 0 {
@@ -500,21 +543,25 @@ func cutOff(text string, stopped bool, err error) bool {
 	return stopped || errors.As(err, &finish) && finish.Reason == "length" || errors.Is(err, openrouter.ErrIncomplete)
 }
 
-func friendlyError(err error) string {
+func (ep endpoint) friendlyError(err error) string {
 	var apiErr *openrouter.APIError
 	if errors.As(err, &apiErr) {
 		switch apiErr.Status {
 		case 401:
-			return "OpenRouter rejected the key. Check it in Preferences"
+			return ep.name + " rejected the key. Check it in Preferences"
 		case 402:
-			return "Out of OpenRouter credits"
+			return "Out of " + ep.name + " credits"
 		case 429:
 			return "Every model in the list is rate-limited right now. Try again shortly"
 		}
 		return apiErr.Message
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return "OpenRouter took too long to respond"
+		return ep.name + " took too long to respond"
+	}
+	if ep.connection != nil && config.IsLoopback(ep.connection.BaseURL) && errors.Is(err, syscall.ECONNREFUSED) {
+		origin, _ := config.Origin(ep.connection.BaseURL)
+		return fmt.Sprintf("Couldn't reach %s at %s. Is it running?", ep.name, origin)
 	}
 	// The partial text is saved alongside, so say why it stops where it does.
 	var finish *openrouter.FinishError

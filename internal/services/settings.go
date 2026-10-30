@@ -190,3 +190,16 @@ func (s *SettingsService) Models() ([]openrouter.ModelInfo, error) {
 	s.models, s.fetchedAt = models, time.Now()
 	return models, nil
 }
+
+// ProviderStatus describes the active provider. An unknown provider is an
+// error, as it is for sending.
+func (s *SettingsService) ProviderStatus() (ProviderStatus, error) {
+	conn, err := s.cfg.Get().ActiveConnection()
+	if err != nil {
+		return ProviderStatus{}, err
+	}
+	if conn == nil {
+		return ProviderStatus{ID: config.ProviderOpenRouter, Name: "OpenRouter", NeedsKey: true, HasKey: s.HasAPIKey(), Web: true}, nil
+	}
+	return ProviderStatus{ID: conn.ID, Name: conn.Name, NeedsKey: conn.NeedsKey(), HasKey: s.HasConnectionKey(conn.ID)}, nil
+}
