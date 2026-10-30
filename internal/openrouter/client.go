@@ -189,12 +189,15 @@ func New(apiKey string) *Client {
 		APIKey:   apiKey,
 		AppTitle: "Ntikuma",
 		//no overall timeout: streams can run for minutes so we cancel via context
-		HTTP: &http.Client{Transport: &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			ResponseHeaderTimeout: 60 * time.Second,
-			IdleConnTimeout:       90 * time.Second,
-			ForceAttemptHTTP2:     true,
-		}},
+		HTTP: &http.Client{
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: 60 * time.Second,
+				IdleConnTimeout:       90 * time.Second,
+				ForceAttemptHTTP2:     true,
+			},
+			CheckRedirect: SameOriginRedirects,
+		},
 	}
 }
 
