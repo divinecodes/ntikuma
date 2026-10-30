@@ -1,0 +1,1 @@
+{"id":"fixture","object":"chat.completion","model":"gpt-fixture","choices":[{"index":0,"message":{"role":"assistant","content":null,"refusal":"I'm sorry, I can't help with that."},"finish_reason":"stop"}]}

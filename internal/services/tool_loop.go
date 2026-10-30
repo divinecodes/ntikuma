@@ -124,6 +124,8 @@ func (s *ChatService) runTurn(ctx context.Context, llm LLM, req openrouter.Reque
 		}
 		all.Fallback = all.Fallback || res.Fallback
 		all.FinishReason = res.FinishReason
+		// The last step's reasoning led to the answer that's saved.
+		all.Reasoning = res.Reasoning
 		for _, citation := range res.Citations {
 			if citation.URL != "" && !seenCitations[citation.URL] {
 				seenCitations[citation.URL] = true

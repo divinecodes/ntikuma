@@ -1,0 +1,10 @@
+data: {"id":"fixture","object":"chat.completion.chunk","model":"gpt-fixture","choices":[{"index":0,"delta":{"role":"assistant","content":null,"refusal":""},"finish_reason":null}]}
+
+data: {"id":"fixture","object":"chat.completion.chunk","model":"gpt-fixture","choices":[{"index":0,"delta":{"refusal":"I'm sorry, "},"finish_reason":null}]}
+
+data: {"id":"fixture","object":"chat.completion.chunk","model":"gpt-fixture","choices":[{"index":0,"delta":{"refusal":"I can't help with that."},"finish_reason":null}]}
+
+data: {"id":"fixture","object":"chat.completion.chunk","model":"gpt-fixture","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

@@ -1,6 +1,8 @@
 package openrouter
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -41,15 +43,32 @@ type accumulatedCall struct {
 type toolCallAccumulator struct {
 	calls         map[int]*accumulatedCall
 	argumentBytes int
+	// lenient accepts what some OpenAI-compatible servers send: streamed
+	// calls without indices when they can be told apart, and calls without
+	// an ID or type. OpenRouter always sends them.
+	lenient bool
+	// The first streamed delta decides whether a stream uses indices.
+	indexed, unindexed bool
+	ids                map[string]int // unindexed streams: call ID → index
 }
 
 func (a *toolCallAccumulator) add(deltas []toolCallDelta, streamed bool) error {
 	for ordinal, delta := range deltas {
 		index := ordinal
 		if delta.Index != nil {
-			index = *delta.Index
+			if streamed && a.unindexed {
+				return errors.New("openrouter: tool-call stream mixes calls with and without an index")
+			}
+			index, a.indexed = *delta.Index, a.indexed || streamed
 		} else if streamed {
-			return errors.New("openrouter: streamed tool call is missing its index")
+			if !a.lenient || a.indexed {
+				return errors.New("openrouter: streamed tool call is missing its index")
+			}
+			a.unindexed = true
+			var err error
+			if index, err = a.correlate(delta, len(deltas)); err != nil {
+				return err
+			}
 		}
 		if index < 0 {
 			return errors.New("openrouter: negative tool-call index")
@@ -83,6 +102,12 @@ func (a *toolCallAccumulator) add(deltas []toolCallDelta, streamed bool) error {
 			}
 			*header.dst = header.value
 		}
+		if a.unindexed && call.id != "" {
+			if a.ids == nil {
+				a.ids = make(map[string]int)
+			}
+			a.ids[call.id] = index
+		}
 		arguments := delta.Function.Arguments
 		if len(arguments) > maxToolArgumentBytes-call.arguments.Len() || len(arguments) > maxTotalToolArgumentBytes-a.argumentBytes {
 			return errors.New("openrouter: tool-call arguments are too large")
@@ -91,6 +116,28 @@ func (a *toolCallAccumulator) add(deltas []toolCallDelta, streamed bool) error {
 		a.argumentBytes += len(arguments)
 	}
 	return nil
+}
+
+// correlate finds the call an unindexed delta belongs to: the call with its
+// ID, a new call for a new ID or the first delta, or the only open call when
+// the chunk has just this one delta. Anything else could join the wrong call.
+func (a *toolCallAccumulator) correlate(delta toolCallDelta, inChunk int) (int, error) {
+	if delta.ID != "" {
+		if index, ok := a.ids[delta.ID]; ok {
+			return index, nil
+		}
+		return len(a.calls), nil
+	}
+	switch {
+	case inChunk > 1:
+	case len(a.calls) == 0:
+		return 0, nil
+	case len(a.calls) == 1:
+		for index := range a.calls {
+			return index, nil
+		}
+	}
+	return 0, errors.New("openrouter: can't tell which tool call a fragment without an index or ID belongs to")
 }
 
 func (a *toolCallAccumulator) finish(reason string) ([]ToolCall, error) {
@@ -112,6 +159,17 @@ func (a *toolCallAccumulator) finish(reason string) ([]ToolCall, error) {
 	ids := make(map[string]bool)
 	for _, index := range indices {
 		call := a.calls[index]
+		if a.lenient && call.kind == "" {
+			call.kind = "function"
+		}
+		if a.lenient && call.id == "" {
+			// Once per call, so its tool reply refers to the same ID.
+			b := make([]byte, 8)
+			if _, err := rand.Read(b); err != nil {
+				return nil, err
+			}
+			call.id = "call_" + hex.EncodeToString(b)
+		}
 		if call.id == "" || call.name == "" || call.kind != "function" || ids[call.id] {
 			return nil, errors.New("openrouter: incomplete or duplicate function-call envelope")
 		}

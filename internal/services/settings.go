@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"ntikuma/internal/config"
 	"ntikuma/internal/openrouter"
@@ -24,7 +25,18 @@ type SettingsService struct {
 	models        []openrouter.ModelInfo
 	fetchedAt     time.Time
 	pickDirectory func(string) (string, error)
+
+	connectionMu     sync.Mutex
+	connectionModels map[string]cachedConnectionModels // by connection ID and address
 }
+
+type cachedConnectionModels struct {
+	models    []openrouter.ModelInfo
+	fetchedAt time.Time
+}
+
+// maxSuggestedModels bounds the suggestions taken from a provider's list.
+const maxSuggestedModels = 1000
 
 // NewSettingsService wires the settings service
 func NewSettingsService(cfg *config.Manager, keys KeyStore, pickers ...func(string) (string, error)) *SettingsService {
@@ -188,6 +200,68 @@ func (s *SettingsService) Models() ([]openrouter.ModelInfo, error) {
 		return s.models, err //stale list beats none
 	}
 	s.models, s.fetchedAt = models, time.Now()
+	return models, nil
+}
+
+// ConnectionModels lists a direct provider's models as suggestions, cached
+// for an hour per address. It sends the key saved for that address. A
+// failure leaves typing a model ID working.
+func (s *SettingsService) ConnectionModels(id string) ([]openrouter.ModelInfo, error) {
+	var conn *config.Connection
+	for _, c := range s.cfg.Get().Connections {
+		if c.ID == id {
+			conn = &c
+			break
+		}
+	}
+	if conn == nil {
+		return nil, errors.New("unknown provider")
+	}
+	if conn.Kind != config.KindOpenAICompatible {
+		return nil, fmt.Errorf("%s can't list its models yet", conn.Name)
+	}
+	origin, err := config.Origin(conn.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	cacheKey := id + " " + conn.BaseURL
+	s.connectionMu.Lock()
+	defer s.connectionMu.Unlock()
+	if cached, ok := s.connectionModels[cacheKey]; ok && time.Since(cached.fetchedAt) < time.Hour {
+		return cached.models, nil
+	}
+	key, err := s.keys.ConnectionKey(id, origin)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't read the keyring: %w", err)
+	}
+	if key == "" && conn.NeedsKey() {
+		return nil, fmt.Errorf("add your %s key to list its models", conn.Name)
+	}
+	client := openrouter.New(key)
+	client.BaseURL, client.Direct = conn.BaseURL, true
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	listed, err := client.Models(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var models []openrouter.ModelInfo
+	seen := map[string]bool{}
+	for _, m := range listed {
+		// The same limits as a typed model name, so any suggestion can be saved.
+		if m.ID == "" || len(m.ID) > 256 || !utf8.ValidString(m.ID) || strings.ContainsFunc(m.ID, func(r rune) bool { return r < ' ' }) || seen[m.ID] {
+			continue
+		}
+		seen[m.ID] = true
+		models = append(models, openrouter.ModelInfo{ID: m.ID, Name: m.Name})
+		if len(models) == maxSuggestedModels {
+			break
+		}
+	}
+	if s.connectionModels == nil {
+		s.connectionModels = make(map[string]cachedConnectionModels)
+	}
+	s.connectionModels[cacheKey] = cachedConnectionModels{models: models, fetchedAt: time.Now()}
 	return models, nil
 }
 

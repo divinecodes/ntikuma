@@ -43,6 +43,9 @@ type Message struct {
 	ToolCallID       string            `json:"tool_call_id,omitempty"`
 	Reasoning        string            `json:"reasoning,omitempty"`
 	ReasoningDetails []json.RawMessage `json:"reasoning_details,omitempty"`
+	// reasoningContent is Reasoning as direct providers read it; set by
+	// directMessages, and sent even when empty.
+	reasoningContent *string
 }
 
 // MarshalJSON preserves string content for text-only messages and uses the
@@ -80,7 +83,26 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		ToolCallID       string            `json:"tool_call_id,omitempty"`
 		Reasoning        string            `json:"reasoning,omitempty"`
 		ReasoningDetails []json.RawMessage `json:"reasoning_details,omitempty"`
-	}{m.Role, content, m.ToolCalls, m.ToolCallID, reasoning, m.ReasoningDetails})
+		ReasoningContent *string           `json:"reasoning_content,omitempty"`
+	}{m.Role, content, m.ToolCalls, m.ToolCallID, reasoning, m.ReasoningDetails, m.reasoningContent})
+}
+
+// directMessages moves reasoning to reasoning_content, the field DeepSeek,
+// Kimi and similar servers read back; OpenRouter's reasoning fields stay
+// behind. DeepSeek wants it on every earlier assistant turn once tools are in
+// play, so when any turn has it, every assistant turn carries it, even empty.
+func directMessages(msgs []Message) []Message {
+	withReasoning := slices.ContainsFunc(msgs, func(m Message) bool { return m.Role == "assistant" && m.Reasoning != "" })
+	out := slices.Clone(msgs)
+	for i := range out {
+		m := &out[i]
+		if withReasoning && m.Role == "assistant" {
+			reasoning := m.Reasoning
+			m.reasoningContent = &reasoning
+		}
+		m.Reasoning, m.ReasoningDetails = "", nil
+	}
+	return out
 }
 
 type Request struct {
@@ -140,6 +162,7 @@ var ErrIncomplete = errors.New("the connection closed before the answer finished
 // FinishError reports an answer the provider ended early. OpenRouter
 // normalizes finish_reason to tool_calls, stop, length, content_filter or
 // error; the last three mean the text is cut short. Other values pass.
+// "refusal" is the client's own: the model sent a refusal instead of an answer.
 type FinishError struct{ Reason string }
 
 func (e *FinishError) Error() string {
@@ -148,6 +171,8 @@ func (e *FinishError) Error() string {
 		return "the answer reached the model's output limit and was cut off"
 	case "content_filter":
 		return "the provider's content filter stopped the answer"
+	case "refusal":
+		return "the model declined to answer"
 	default:
 		return "the provider stopped the answer with an error"
 	}
@@ -227,10 +252,12 @@ type annotation struct {
 
 type responseMessage struct {
 	Content          string            `json:"content"`
+	Refusal          string            `json:"refusal"` // OpenAI: sent instead of content
 	Annotations      []annotation      `json:"annotations"`
 	ToolCalls        []toolCallDelta   `json:"tool_calls"`
 	Reasoning        string            `json:"reasoning"`
 	ReasoningDetails []json.RawMessage `json:"reasoning_details"`
+	ReasoningContent string            `json:"reasoning_content"` // DeepSeek, Kimi; direct mode only
 }
 
 type toolUsage struct {
@@ -266,8 +293,9 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 		return Result{}, errors.New("openrouter: Missing API key")
 	}
 	var text, reasoning strings.Builder
-	var calls toolCallAccumulator
+	calls := toolCallAccumulator{lenient: c.Direct}
 	var reasoningBytes int
+	refused := false
 	defer func() {
 		res.Text = text.String()
 		res.Reasoning = reasoning.String()
@@ -280,6 +308,9 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 		}
 		if err == nil {
 			err = finishError(res.FinishReason)
+		}
+		if err == nil && refused {
+			err = &FinishError{Reason: "refusal"}
 		}
 	}()
 
@@ -304,6 +335,7 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 	body := chatBody{Messages: req.Messages, Stream: !req.NonStreaming, SessionID: req.SessionID, Tools: req.Tools, MaxToolCalls: req.MaxToolCalls}
 	if c.Direct {
 		// Other APIs reject OpenRouter's fields and don't run its server tools.
+		body.Messages = directMessages(req.Messages)
 		body.SessionID, body.MaxToolCalls, body.Tools = "", 0, nil
 		for _, tool := range req.Tools {
 			if tool.Type == "function" {
@@ -388,9 +420,12 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 			}
 			addCitations(choice.Delta.Annotations)
 			addCitations(choice.Message.Annotations)
-			reasoningText := choice.Delta.Reasoning
+			reasoningText, messageReasoning := choice.Delta.Reasoning, choice.Message.Reasoning
+			if c.Direct {
+				reasoningText, messageReasoning = choice.Delta.ReasoningContent, choice.Message.ReasoningContent
+			}
 			if reasoningText == "" && reasoning.Len() == 0 {
-				reasoningText = choice.Message.Reasoning
+				reasoningText = messageReasoning
 			}
 			details := choice.Delta.ReasoningDetails
 			if len(details) == 0 && len(res.ReasoningDetails) == 0 {
@@ -415,6 +450,18 @@ func (c *Client) Stream(ctx context.Context, req Request, onDelta func(string)) 
 				text.WriteString(content)
 				if onDelta != nil {
 					onDelta(content)
+				}
+			}
+			// A refusal is shown as the answer, then ends it with FinishError.
+			refusal := choice.Delta.Refusal
+			if refusal == "" && text.Len() == 0 {
+				refusal = choice.Message.Refusal
+			}
+			if refusal != "" {
+				refused = true
+				text.WriteString(refusal)
+				if onDelta != nil {
+					onDelta(refusal)
 				}
 			}
 			if err := calls.add(choice.Delta.ToolCalls, true); err != nil {
@@ -631,11 +678,18 @@ func (c *Client) cachedModels(ctx context.Context) ([]ModelInfo, error) {
 	return models, nil
 }
 
-// Models lists the models OpenRouter currently offers. No key is needed.
+// maxDirectModelListBytes bounds a direct provider's model list.
+const maxDirectModelListBytes = 4 << 20
+
+// Models lists the models OpenRouter currently offers. No key is needed. A
+// direct provider is sent its key and its list is bounded.
 func (c *Client) Models(ctx context.Context) ([]ModelInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.BaseURL, "/")+"/models", nil)
 	if err != nil {
 		return nil, err
+	}
+	if c.Direct && c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
@@ -655,7 +709,18 @@ func (c *Client) Models(ctx context.Context) ([]ModelInfo, error) {
 			} `json:"architecture"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if c.Direct {
+		raw, err := io.ReadAll(io.LimitReader(resp.Body, maxDirectModelListBytes+1))
+		if err != nil {
+			return nil, err
+		}
+		if len(raw) > maxDirectModelListBytes {
+			return nil, errors.New("the model list is too large")
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			return nil, err
+		}
+	} else if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, err
 	}
 	out := make([]ModelInfo, 0, len(body.Data))

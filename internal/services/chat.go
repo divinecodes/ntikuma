@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -117,7 +116,12 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 		return SendResult{}, err
 	}
 
-	msgs := buildMessages(settings.SystemPrompt, history, text, req.Attachments, settings.MaxContextChars, time.Now())
+	// DeepSeek wants its earlier reasoning back once tools are offered.
+	reasoningFor := ""
+	if ep.connection != nil && settings.LocalTools {
+		reasoningFor = ep.connection.ID
+	}
+	msgs := buildMessages(settings.SystemPrompt, history, text, req.Attachments, settings.MaxContextChars, time.Now(), reasoningFor)
 	llmRequest := openrouter.Request{Models: models, Messages: msgs, SessionID: chatID}
 	// Web search and fetch are OpenRouter server tools.
 	if req.Web && ep.connection == nil {
@@ -160,54 +164,6 @@ func (s *ChatService) Send(req SendRequest) (SendResult, error) {
 	}()
 
 	return SendResult{ChatID: chatID, Title: title, MessageID: answerID}, nil
-}
-
-// endpoint is where one answer goes, fixed when Send starts: later changes to
-// the provider, its address or its key apply to the next question.
-type endpoint struct {
-	name       string
-	connection *config.Connection // nil for OpenRouter
-	key        string
-}
-
-func newClient(ep endpoint) LLM {
-	client := openrouter.New(ep.key)
-	if ep.connection != nil {
-		client.BaseURL, client.Direct = ep.connection.BaseURL, true
-	}
-	return client
-}
-
-// resolveEndpoint finds the active provider in settings and its key. A direct
-// connection's key is looked up for the address in settings, so a key saved
-// for another address is never paired with this one.
-func (s *ChatService) resolveEndpoint(settings config.Settings) (endpoint, error) {
-	conn, err := settings.ActiveConnection()
-	if err != nil {
-		return endpoint{}, err
-	}
-	if conn == nil {
-		key, err := s.keys.APIKey()
-		if err != nil {
-			return endpoint{}, fmt.Errorf("couldn't read the keyring: %w", err)
-		}
-		if key == "" {
-			return endpoint{}, errors.New("add your OpenRouter key in Preferences (Ctrl+,)")
-		}
-		return endpoint{name: "OpenRouter", key: key}, nil
-	}
-	origin, err := config.Origin(conn.BaseURL)
-	if err != nil {
-		return endpoint{}, err
-	}
-	key, err := s.keys.ConnectionKey(conn.ID, origin)
-	if err != nil {
-		return endpoint{}, fmt.Errorf("couldn't read the keyring: %w", err)
-	}
-	if key == "" && conn.NeedsKey() {
-		return endpoint{}, fmt.Errorf("add your %s key in Preferences (Ctrl+,)", conn.Name)
-	}
-	return endpoint{name: conn.Name, connection: conn, key: key}, nil
 }
 
 // stop cancels the answer streaming into the chat. the partial answer is kept
@@ -285,6 +241,9 @@ func (s *ChatService) stream(ctx context.Context, ep endpoint, chatID, answerID 
 	}()
 
 	llm := s.newLLM(ep)
+	if ep.connection != nil && len(req.Models) > 1 {
+		llm = fallbackLLM{llm}
+	}
 	var res turnResult
 	var err error
 	// Sized here rather than in Send, so Send never waits for the catalog.
@@ -320,6 +279,9 @@ func (s *ChatService) stream(ctx context.Context, ep endpoint, chatID, answerID 
 	activity := activityViews(res.Activity)
 	if res.Text != "" || len(res.Citations) != 0 || res.Searches != nil || len(res.Activity) != 0 || stopped || err != nil {
 		meta := messageMeta{Citations: res.Citations, Searches: res.Searches, Activity: res.Activity, Stopped: stopped, CutOff: resumable}
+		if ep.connection != nil && res.Reasoning != "" {
+			meta.Reasoning, meta.ReasoningFrom = truncateUTF8(res.Reasoning, maxStoredReasoning), ep.connection.ID
+		}
 		if err != nil && !stopped {
 			meta.Error = ep.friendlyError(err)
 		}
@@ -366,7 +328,8 @@ const noAnswerText = "[No answer: this reply failed or was stopped before any te
 // buildMessages turns stored history plus the new message into the API format.
 // Text attachments are bounded by maxChars. Screenshots remain image parts for
 // the newest few; older ones become a note. trimHistory then bounds the text.
-func buildMessages(system string, history []store.Message, text string, atts []Attachment, maxChars int, now time.Time) []openrouter.Message {
+// Answers from the connection reasoningFor keep their saved reasoning.
+func buildMessages(system string, history []store.Message, text string, atts []Attachment, maxChars int, now time.Time, reasoningFor string) []openrouter.Message {
 	system = strings.TrimSpace(system)
 	if system != "" {
 		system += "\n\n"
@@ -378,6 +341,11 @@ func buildMessages(system string, history []store.Message, text string, atts []A
 		msg := openrouter.Message{Role: m.Role, Content: m.Content}
 		if m.Role == "assistant" && strings.TrimSpace(m.Content) == "" {
 			msg.Content = noAnswerText
+		}
+		if m.Role == "assistant" && reasoningFor != "" {
+			if meta := decodeMeta(m.Meta); meta.ReasoningFrom == reasoningFor {
+				msg.Reasoning = meta.Reasoning
+			}
 		}
 		if m.Role == "user" && m.Attachments != "" {
 			var prev []Attachment
@@ -415,11 +383,11 @@ func trimHistory(msgs []openrouter.Message, budget int) []openrouter.Message {
 	total := conversationChars(msgs)
 	first := 0
 	for first < len(turns)-1 && total > budget {
-		total -= len(turns[first].Content)
+		total -= turnChars(turns[first])
 		first++
 		// Start on a question, so the model never sees a reply to nothing.
 		for first < len(turns)-1 && turns[first].Role != "user" {
-			total -= len(turns[first].Content)
+			total -= turnChars(turns[first])
 			first++
 		}
 	}
@@ -434,10 +402,13 @@ func trimHistory(msgs []openrouter.Message, budget int) []openrouter.Message {
 func conversationChars(msgs []openrouter.Message) int {
 	total := 0
 	for _, m := range msgs[1:] {
-		total += len(m.Content)
+		total += turnChars(m)
 	}
 	return total
 }
+
+// turnChars counts replayed reasoning too: it takes space in the window.
+func turnChars(m openrouter.Message) int { return len(m.Content) + len(m.Reasoning) }
 
 // contextSizer is an LLM that can look up its models' context windows.
 // *openrouter.Client satisfies it.
@@ -541,37 +512,6 @@ func cutOff(text string, stopped bool, err error) bool {
 	}
 	var finish *openrouter.FinishError
 	return stopped || errors.As(err, &finish) && finish.Reason == "length" || errors.Is(err, openrouter.ErrIncomplete)
-}
-
-func (ep endpoint) friendlyError(err error) string {
-	var apiErr *openrouter.APIError
-	if errors.As(err, &apiErr) {
-		switch apiErr.Status {
-		case 401:
-			return ep.name + " rejected the key. Check it in Preferences"
-		case 402:
-			return "Out of " + ep.name + " credits"
-		case 429:
-			return "Every model in the list is rate-limited right now. Try again shortly"
-		}
-		return apiErr.Message
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return ep.name + " took too long to respond"
-	}
-	if ep.connection != nil && config.IsLoopback(ep.connection.BaseURL) && errors.Is(err, syscall.ECONNREFUSED) {
-		origin, _ := config.Origin(ep.connection.BaseURL)
-		return fmt.Sprintf("Couldn't reach %s at %s. Is it running?", ep.name, origin)
-	}
-	// The partial text is saved alongside, so say why it stops where it does.
-	var finish *openrouter.FinishError
-	if errors.As(err, &finish) {
-		return sentence(finish.Error())
-	}
-	if errors.Is(err, openrouter.ErrIncomplete) {
-		return sentence(openrouter.ErrIncomplete.Error())
-	}
-	return err.Error()
 }
 
 func sentence(s string) string {
